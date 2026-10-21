@@ -50,7 +50,7 @@ export class DockerView extends SourceView {
         top.add_child(info);
         const side = vbox({style_class: 'opsdeck-row-side'});
         side.add_child(label(c.status, `opsdeck-status opsdeck-state-${c.state}`));
-        const stats = c.running ? this.ctx.hub.sources.docker.stats.get(c.id) : null;
+        const stats = c.running ? this.ctx.hub.state.docker.details?.get(c.id) : null;
         if (stats)
             side.add_child(label(`CPU ${stats.cpu} · ${stats.mem}`, 'opsdeck-meta opsdeck-stats'));
         top.add_child(side);

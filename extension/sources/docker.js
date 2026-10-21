@@ -192,45 +192,32 @@ function openInTerminal(cmd, okMessage) {
 export class DockerSource {
     id = 'docker';
 
+    // Settings that only change what's shown, not what's fetched.
+    displayKeys = ['docker-show-stopped'];
+    // `docker stats --no-stream` samples for ~1-5s; don't repeat it too often.
+    detailsGapMs = 8000;
+
     constructor(scope) {
         this._scope = scope;
-        /** @type {Map<string, ContainerStats>} */
-        this.stats = new Map();
-        this.statsAt = 0;
-        this._wantStats = false;
-        this._statsInflight = false;
-        /** Set by the Hub: call when data changes outside fetch(). */
-        this.onUpdate = null;
     }
 
     /**
-     * Stats are expensive (`docker stats` samples for ~1-5s), so they are
-     * only collected while the Docker tab is on screen.
+     * Per-container CPU/memory; the Hub only calls this while the Docker tab
+     * is on screen.
+     *
+     * @returns {Promise<Map<string, ContainerStats>>}
      */
-    setVisible(visible) {
-        this._wantStats = visible;
-        if (visible)
-            this._refreshStats();
-    }
-
-    async _refreshStats() {
+    async fetchDetails() {
         const docker = which('docker');
-        if (!docker || !this._wantStats || this._statsInflight || Date.now() - this.statsAt < 8000)
-            return;
-        this._statsInflight = true;
-        try {
-            const r = await run([docker, 'stats', '--no-stream', '--format', '{{json .}}'],
-                {cancellable: this._scope.cancellable, timeoutMs: 15000});
-            if (r.cancelled || this._scope.disposed)
-                return;
-            if (r.ok) {
-                this.stats = parseStats(r.stdout);
-                this.statsAt = Date.now();
-                this.onUpdate?.();
-            }
-        } finally {
-            this._statsInflight = false;
-        }
+        if (!docker)
+            return new Map();
+        const r = await run([docker, 'stats', '--no-stream', '--format', '{{json .}}'],
+            {cancellable: this._scope.cancellable, timeoutMs: 15000});
+        if (r.cancelled)
+            throw new CancelledError();
+        if (!r.ok)
+            throw new Error(r.stderr.trim().split('\n')[0] || 'docker stats failed');
+        return parseStats(r.stdout);
     }
 
     async fetch() {
@@ -246,9 +233,7 @@ export class DockerSource {
                 throw new SourceError('daemon', 'Docker did not respond', 'The daemon may be hung.');
             throw classifyDockerError(r.stderr);
         }
-        const containers = parseContainers(r.stdout);
-        this._refreshStats();
-        return containers;
+        return parseContainers(r.stdout);
     }
 
     count(containers) {

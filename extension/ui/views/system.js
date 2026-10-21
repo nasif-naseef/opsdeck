@@ -30,8 +30,7 @@ export class SystemView extends SourceView {
     }
 
     build(list, d) {
-        const src = this.ctx.hub.sources.system;
-        const details = src.details;
+        const details = this.ctx.hub.state.system.details;
         const [l1, l5, l15] = d.load;
 
         list.add_child(label(`${d.hostname} · Linux ${d.kernel} · up ${formatDuration(d.uptime * 1000)} · ` +
@@ -41,7 +40,7 @@ export class SystemView extends SourceView {
         const cpu = card('CPU', pct(d.cpu.total), usageLevel(d.cpu.total));
         cpu.add_child(label([`${d.cpu.cores.length} threads`,
             d.cpuTemp !== null && `${d.cpuTemp} °C`].filter(Boolean).join(' · '), 'opsdeck-meta'));
-        cpu.add_child(sparkline([src.history.cpu], {max: 100}));
+        cpu.add_child(sparkline([d.history.cpu], {max: 100}));
         cpu.add_child(coreStrip(d.cpu.cores));
         list.add_child(cpu);
 
@@ -61,7 +60,7 @@ export class SystemView extends SourceView {
         const rx = d.net.reduce((a, n) => a + n.rx, 0);
         const tx = d.net.reduce((a, n) => a + n.tx, 0);
         const net = card('Network', `↓ ${formatRate(rx)}  ↑ ${formatRate(tx)}`);
-        net.add_child(sparkline([src.history.rx, src.history.tx]));
+        net.add_child(sparkline([d.history.rx, d.history.tx]));
         for (const n of d.net.filter(i => i.rx + i.tx > 0).slice(0, 4))
             net.add_child(label(`${n.name}  ↓ ${formatRate(n.rx)}  ↑ ${formatRate(n.tx)}`, 'opsdeck-meta'));
         list.add_child(net);

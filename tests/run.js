@@ -13,6 +13,7 @@ import {Emitter} from '../extension/lib/emitter.js';
 import {escalate, isGone, isSessionCritical, signalBlocker} from '../extension/lib/process.js';
 import {self} from '../extension/lib/subprocess.js';
 import {Scope} from '../extension/lib/scope.js';
+import {Hub, SOURCE_IDS} from '../extension/lib/hub.js';
 import {cpuPercent, describeCmdline, formatBytes, formatRate, netRates, parseLoadavg, parseMeminfo, parseMounts, parseNetDev,
     parseNvidiaSmi, parseProcStat, parseTop, parseTopMem, parseUptime, pickCpuTemp} from '../extension/lib/procfs.js';
 import {inRange, matchesPort, parseListening} from '../extension/sources/ports.js';
@@ -405,6 +406,78 @@ async function asyncTests() {
         send: async () => ({ok: false, status: 2, stderr: 'PID 9 is now bash, not ssh'}), alive: async () => true});
     test('escalate stops on a mid-ladder block and reports why', () =>
         eq(r, {ok: false, message: 'PID 9 is now bash, not ssh'}));
+
+    // ── Hub: render discipline, coalescing, details gating ─────────────────
+    const fakeSettings = (over = {}) => {
+        const handlers = new Map();
+        let next = 1;
+        return {
+            connect: (sig, fn) => { handlers.set(next, {sig, fn}); return next++; },
+            disconnect: id => handlers.delete(id),
+            get_boolean: k => over[k] ?? (k.startsWith('enable-') ? k === 'enable-ports' : true),
+            get_int: () => 3600,
+            get_string: () => '',
+            fire: sig => [...handlers.values()].filter(h => h.sig === sig).forEach(h => h.fn()),
+            set: (k, v) => { over[k] = v; },
+        };
+    };
+    const deferred = () => { let resolve; const p = new Promise(r => { resolve = r; }); return {p, resolve}; };
+    const makeSources = ports => Object.fromEntries(SOURCE_IDS.map(id => [id,
+        id === 'ports' ? ports : {fetch: async () => null, count: () => 0}]));
+    const tick = () => new Promise(r => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { r(); return GLib.SOURCE_REMOVE; }));
+
+    {
+        const hubScope = new Scope();
+        const calls = {fetch: 0, details: 0};
+        let gate = deferred();
+        const ports = {
+            displayKeys: ['port-range-min'],
+            detailsGapMs: 0,
+            fetch: async () => { calls.fetch++; await gate.p; return ['p']; },
+            fetchDetails: async () => { calls.details++; return {n: calls.details}; },
+            count: d => d.length,
+        };
+        const settings = fakeSettings();
+        const hub = new Hub(settings, hubScope, makeSources(ports));
+        const events = [];
+        hub.connect('changed', id => id === 'ports' && events.push('changed'));
+        hub.connect('loading', id => id === 'ports' && events.push('loading'));
+        hub.start();                       // enable → forced refresh starts (gated)
+        hub.refresh('ports', {force: true}); // during flight: must coalesce, not spawn
+        hub.refresh('ports');                // plain duplicate: ignored
+        test('Hub never runs two fetches of a source at once', () => eq(calls.fetch, 1));
+        events.length = 0;
+        gate.resolve(); gate = deferred();
+        await tick(); await tick();
+        test('Hub emits loading then exactly one changed per fetch', () =>
+            eq(events.slice(0, 2), ['changed', 'loading']));
+        test('Hub runs the queued forced refresh once after the first finishes', () => eq(calls.fetch, 2));
+        test('Hub does not fetch details for a source that is not visible', () => eq(calls.details, 0));
+        hub.setVisible('ports');
+        await tick();
+        test('Hub fetches details as soon as a source becomes visible', () => {
+            eq(calls.details, 1);
+            eq(hub.state.ports.details, {n: 1});
+        });
+        events.length = 0;
+        settings.fire('changed::port-range-min');
+        test('Hub re-renders on a source\'s displayKeys without fetching', () => {
+            eq(events, ['changed']);
+            eq(calls.fetch, 2);
+        });
+        // Disable while a fetch is in flight: its late result must be dropped.
+        settings.set('enable-ports', false);
+        settings.fire('changed::enable-ports');
+        gate.resolve();
+        await tick(); await tick();
+        test('Hub drops in-flight results and details when a source is disabled', () => {
+            eq(hub.state.ports.data, null);
+            eq(hub.state.ports.details, null);
+            eq(hub.count('ports'), null);
+        });
+        hub.destroy();
+        hubScope.dispose();
+    }
     scope.dispose();
 }
 asyncTests().catch(e => failures.push(`✗ async tests crashed: ${e.stack}`)).finally(() => loop.quit());

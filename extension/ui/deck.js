@@ -110,6 +110,8 @@ export class Deck {
 
         this._hubIds = [
             hub.connect('changed', id => this._onChanged(id)),
+            // A fetch starting only changes the "refreshing" note, not the list.
+            hub.connect('loading', id => this._open && id === this._active && this._updateSubtitle()),
             hub.connect('enabled-changed', () => this._syncNav()),
         ];
         // The tab the user last chose. It is only ever written on a click, so
@@ -167,10 +169,9 @@ export class Deck {
         this._renderActive();
     }
 
-    /** Let sources do extra work (like docker stats) only while on screen. */
+    /** Only the source on screen gathers its expensive details. */
     _syncVisibility() {
-        for (const sid of SOURCE_IDS)
-            this._hub.sources[sid].setVisible?.(this._open && sid === this._active);
+        this._hub.setVisible(this._open ? this._active : null);
     }
 
     onMenuOpened() {

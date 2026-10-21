@@ -97,6 +97,7 @@ export function panelPercent(windows, pref) {
 
 export class ClaudeSource {
     id = 'claude';
+    displayKeys = ['claude-panel-window'];
 
     constructor(scope) {
         this._scope = scope;

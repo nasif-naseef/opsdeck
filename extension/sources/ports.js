@@ -73,6 +73,7 @@ export function describePort(e) {
 
 export class PortsSource {
     id = 'ports';
+    displayKeys = ['port-range-min', 'port-range-max', 'ports-show-udp'];
 
     constructor(scope) {
         this._scope = scope;

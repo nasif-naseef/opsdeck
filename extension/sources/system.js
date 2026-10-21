@@ -11,7 +11,6 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
-import {CancelledError} from '../lib/scope.js';
 import {procInfo, signalBlocker, signalLadder} from '../lib/process.js';
 import {cpuPercent, describeCmdline, netRates, parseLoadavg, parseMeminfo, parseMounts, parseNetDev, parseNvidiaSmi,
     parseProcStat, parseTop, parseUptime, pickCpuTemp} from '../lib/procfs.js';
@@ -84,6 +83,7 @@ function discoverGpus() {
 
 export class SystemSource {
     id = 'system';
+    displayKeys = ['system-panel-metric'];
 
     constructor(scope) {
         this._scope = scope;
@@ -91,21 +91,9 @@ export class SystemSource {
         this._prevNet = null;
         this._sensors = null;
         this._gpus = null;
-        this._visible = false;
-        this._detailsInflight = false;
-        this._detailsAt = 0;
-        /** Extra readings while the tab is open; read by the view. */
-        this.details = null;
-        this.history = {cpu: [], mem: [], rx: [], tx: []};
-        this.onUpdate = null;
+        this._history = {cpu: [], mem: [], rx: [], tx: []};
         this._hostname = GLib.get_host_name();
         this._kernel = null;
-    }
-
-    setVisible(visible) {
-        this._visible = visible;
-        if (visible)
-            this._refreshDetails();
     }
 
     async fetch() {
@@ -149,9 +137,6 @@ export class SystemSource {
         this._push('rx', net.reduce((a, n) => a + n.rx, 0));
         this._push('tx', net.reduce((a, n) => a + n.tx, 0));
 
-        if (this._visible)
-            this._refreshDetails();
-
         return {
             hostname: this._hostname,
             kernel: this._kernel,
@@ -162,11 +147,13 @@ export class SystemSource {
             mem,
             memPct,
             net,
+            // Snapshot for the sparklines (the ring buffers keep mutating).
+            history: Object.fromEntries(Object.entries(this._history).map(([k, v]) => [k, [...v]])),
         };
     }
 
     _push(key, value) {
-        const h = this.history[key];
+        const h = this._history[key];
         h.push(value);
         if (h.length > HISTORY)
             h.shift();
@@ -186,25 +173,11 @@ export class SystemSource {
         return t === null ? null : Math.round(t);
     }
 
-    /** Disks, GPUs, battery and top processes; only while the tab is open. */
-    async _refreshDetails() {
-        if (!this._visible || this._detailsInflight || Date.now() - this._detailsAt < DETAILS_MIN_GAP_MS)
-            return;
-        this._detailsInflight = true;
-        try {
-            const [disks, gpus, battery, processes] = await Promise.all([
-                this._disks(), this._gpuStats(), this._battery(), this._topProcesses()]);
-            if (this._scope.disposed)
-                return;
-            this.details = {disks, gpus, battery, processes};
-            this._detailsAt = Date.now();
-            this.onUpdate?.();
-        } catch (e) {
-            if (!(e instanceof CancelledError) && !this._scope.disposed)
-                console.error(`[OpsDeck] system details failed: ${e.stack ?? e}`);
-        } finally {
-            this._detailsInflight = false;
-        }
+    /** Disks, GPUs, battery and top processes; the Hub only asks while the tab is open. */
+    async fetchDetails() {
+        const [disks, gpus, battery, processes] = await Promise.all([
+            this._disks(), this._gpuStats(), this._battery(), this._topProcesses()]);
+        return {disks, gpus, battery, processes};
     }
 
     async _disks() {
@@ -324,7 +297,5 @@ export class SystemSource {
         return signalLadder(proc.pid, this._scope, {expectComm: proc.command});
     }
 
-    destroy() {
-        this.details = null;
-    }
+    destroy() {}
 }
