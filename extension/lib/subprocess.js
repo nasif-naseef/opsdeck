@@ -7,6 +7,8 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
+import {actionResult} from './source.js';
+
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async');
 Gio._promisify(Gio.Subprocess.prototype, 'wait_async');
 Gio._promisify(Gio.File.prototype, 'load_contents_async');
@@ -105,8 +107,11 @@ const TERMINALS = [
     ['konsole', cmd => ['-e', ...cmd]],
     ['xterm', cmd => ['-e', ...cmd]],
 ];
-// A launcher that can't open anything (e.g. xdg-terminal-exec with no
-// terminal configured) exits non-zero almost at once.
+// xdg-terminal-exec exits non-zero at once when no terminal is configured.
+// Terminals proper (xterm, kitty, ...) exit with the *command's* status, so
+// a quick failure there means the command failed, not the terminal: falling
+// through would just open a second window.
+const DISPATCHERS = new Set(['xdg-terminal-exec']);
 const EARLY_FAILURE_MS = 1500;
 
 /**
@@ -131,14 +136,16 @@ export async function launchInTerminal(cmd, scope) {
         }
         // Reap the child whenever it exits so it never lingers as a zombie.
         const exited = proc.wait_async(null).then(() => true, () => true);
+        if (!DISPATCHERS.has(bin))
+            return actionResult(true, `Opened in ${bin}`);
         const quickExit = await Promise.race([exited, scope.sleep(EARLY_FAILURE_MS).then(() => false)]);
         // Still running: a terminal is open. Exited 0: it handed off to a
         // terminal server (gnome-terminal, ptyxis). Exited non-zero: next.
         if (!quickExit || proc.get_successful())
-            return {ok: true, message: `Opened in ${bin}`};
+            return actionResult(true, `Opened in ${bin}`);
         console.warn(`[OpsDeck] ${bin} exited with status ${proc.get_exit_status()}; trying the next terminal`);
     }
-    return {ok: false, message: 'No working terminal emulator found'};
+    return actionResult(false, 'No working terminal emulator found');
 }
 
 /** Open a URI with the user's default handler, reporting failure. */
@@ -147,9 +154,9 @@ export function openUri(uri) {
         Gio.AppInfo.launch_default_for_uri_async(uri, null, null, (_src, res) => {
             try {
                 Gio.AppInfo.launch_default_for_uri_finish(res);
-                resolve({ok: true, message: `Opened ${uri}`});
+                resolve(actionResult(true, `Opened ${uri}`));
             } catch (e) {
-                resolve({ok: false, message: `Could not open ${uri}: ${e.message}`});
+                resolve(actionResult(false, `Could not open ${uri}: ${e.message}`));
             }
         });
     });

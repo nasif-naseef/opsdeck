@@ -16,8 +16,8 @@ import {Scope} from '../extension/lib/scope.js';
 import {Hub, SOURCE_IDS} from '../extension/lib/hub.js';
 import {cpuPercent, describeCmdline, formatBytes, formatRate, netRates, parseLoadavg, parseMeminfo, parseMounts, parseNetDev,
     parseNvidiaSmi, parseProcStat, parseTop, parseTopMem, parseUptime, pickCpuTemp} from '../extension/lib/procfs.js';
-import {inRange, matchesPort, parseListening} from '../extension/sources/ports.js';
-import {parseEstablished, parseSshArgs, parseSshTarget, parseWho} from '../extension/sources/ssh.js';
+import {matchesPort, parseListening, visiblePorts} from '../extension/sources/ports.js';
+import {parseEstablished, parseSshArgs, parseWho} from '../extension/sources/ssh.js';
 import {classifyDockerError, hostPortIndex, parseContainers, parseLabels, parsePublished, parseStats,
     publishedPorts} from '../extension/sources/docker.js';
 import {ClaudeSource, panelPercent, parseCredentials, parseUsage} from '../extension/sources/claude.js';
@@ -116,11 +116,14 @@ test('parseListening merges duplicate sockets and v4/v6 binds', () => {
 
 test('port range + query filters', () => {
     const ports = parseListening(fixture('ss-listening.txt'));
-    eq(ports.filter(p => inRange(p, 1024, 9999)).map(p => p.port), [1900, 5173, 5353, 8080, 9000]);
+    const range = {get_int: k => ({'port-range-min': 1024, 'port-range-max': 9999})[k], get_boolean: () => true};
+    eq(visiblePorts(ports, range).map(p => p.port), [1900, 5173, 5353, 8080, 9000]);
     eq(ports.filter(p => matchesPort(p, 'nginx')).map(p => p.port), [8080]);
     eq(ports.filter(p => matchesPort(p, '4242')).map(p => p.port), [5173]);
     eq(ports.filter(p => matchesPort(p, 'udp')).length, 3);
 });
+
+const target = argv => parseSshArgs(argv).target;
 
 // ── ssh ───────────────────────────────────────────────────────────────────
 test('parseWho keeps only remote logins', () => {
@@ -141,18 +144,18 @@ test('parseEstablished finds ssh clients only, with or without State column', ()
 });
 
 test('parseSshTarget extracts the destination from argv', () => {
-    eq(parseSshTarget(['ssh', 'deploy@web-1']), 'deploy@web-1');
-    eq(parseSshTarget(['ssh', '-p', '2222', '-i', '/k', 'web-1', 'uptime']), 'web-1');
-    eq(parseSshTarget(['/usr/bin/ssh', '-l', 'root', '-A', 'db']), 'root@db');
-    eq(parseSshTarget(['ssh', '-lroot', 'db']), 'root@db');
-    eq(parseSshTarget(['ssh', '-NL', '8080:localhost:80', 'bastion']), 'bastion');
-    eq(parseSshTarget(['ssh', '-o', 'StrictHostKeyChecking=no', '--', 'h']), 'h');
-    eq(parseSshTarget(['ssh', 'ssh://me@h:2200']), 'ssh://me@h:2200');
-    eq(parseSshTarget(['ssh', '-v']), null);
+    eq(target(['ssh', 'deploy@web-1']), 'deploy@web-1');
+    eq(target(['ssh', '-p', '2222', '-i', '/k', 'web-1', 'uptime']), 'web-1');
+    eq(target(['/usr/bin/ssh', '-l', 'root', '-A', 'db']), 'root@db');
+    eq(target(['ssh', '-lroot', 'db']), 'root@db');
+    eq(target(['ssh', '-NL', '8080:localhost:80', 'bastion']), 'bastion');
+    eq(target(['ssh', '-o', 'StrictHostKeyChecking=no', '--', 'h']), 'h');
+    eq(target(['ssh', 'ssh://me@h:2200']), 'ssh://me@h:2200');
+    eq(target(['ssh', '-v']), null);
 });
 
 test('parseSshArgs: options after the destination, remote command stops parsing', () => {
-    eq(parseSshTarget(['ssh', 'bastion', '-L', '8080:db:5432']), 'bastion');
+    eq(target(['ssh', 'bastion', '-L', '8080:db:5432']), 'bastion');
     eq(parseSshArgs(['ssh', 'bastion', '-L', '8080:db:5432']).forwards,
         [{type: 'L', listen: '8080', to: 'db:5432'}]);
     eq(parseSshArgs(['ssh', 'host', 'ls', '-L', '1:a:2']).forwards, []);
@@ -450,8 +453,10 @@ async function asyncTests() {
         events.length = 0;
         gate.resolve(); gate = deferred();
         await tick(); await tick();
-        test('Hub emits loading then exactly one changed per fetch', () =>
-            eq(events.slice(0, 2), ['changed', 'loading']));
+        test('Hub emits exactly one changed per completed fetch (follow-up still in flight)', () => {
+            eq(events.filter(e => e === 'changed').length, 1);
+            eq(events.includes('loading'), true);
+        });
         test('Hub runs the queued forced refresh once after the first finishes', () => eq(calls.fetch, 2));
         test('Hub does not fetch details for a source that is not visible', () => eq(calls.details, 0));
         hub.setVisible('ports');
@@ -506,8 +511,8 @@ async function asyncTests() {
         hub.start();
         await tick(); await tick();
         test('hub.display: counts and gauges share one shape', () => {
-            eq(hub.display('ports'), {value: 3, text: '3', level: null, gauge: false});
-            eq(hub.display('system'), {value: 91, text: '91°', level: 'critical', gauge: true});
+            eq(hub.display('ports'), {value: 3, text: '3', level: null, quiet: false});
+            eq(hub.display('system'), {value: 91, text: '91°', level: 'critical', quiet: false});
             eq(hub.display('docker'), null); // disabled
         });
         hub.destroy();

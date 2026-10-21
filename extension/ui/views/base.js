@@ -24,10 +24,10 @@ const ERROR_ICONS = {
  * @property {import('gi://Gio').default.Settings} settings
  * @property {import('../confirm.js').ConfirmTracker} confirm
  * @property {(key: string) => boolean} isBusy
- * @property {(sourceId: string, key: string, fn: () => Promise<{ok: boolean, message: string}>) => void} runAction
+ * @property {(sourceId: string, key: string, fn: () => Promise<{ok: boolean, message: string}>,
+ *             opts?: {refresh?: boolean}) => void} runAction
  * @property {() => void} openPreferences
  * @property {() => void} closeMenu
- * @property {(name: string) => import('gi://Gio').default.Icon} icon
  */
 
 export class SourceView {
@@ -127,12 +127,12 @@ export class SourceView {
      * @param {string} [o.busyText]
      * @param {string} o.accessibleName
      * @param {'danger'|'suggested'} [o.variant]
-     * @param {boolean} [o.closesMenu] - e.g. for actions that open a window
-     * @param {boolean} [o.refresh] - refresh the source afterwards (default true)
+     * @param {boolean} [o.opensWindow] - opens a browser/terminal: closes the
+     *   menu first and doesn't refresh the source afterwards
      * @param {() => any} o.run - returns (a promise of) an actionResult
      */
     actionButton({key, text, iconName, confirmText, busyText = '…', accessibleName, variant,
-        closesMenu = false, refresh = true, run}) {
+        opensWindow = false, run}) {
         const busy = this.ctx.isBusy(key);
         const armed = Boolean(confirmText) && this.ctx.confirm.isArmed(key);
         const shown = busy ? busyText : armed ? confirmText : text;
@@ -146,9 +146,9 @@ export class SourceView {
             onClick: () => {
                 if (confirmText && !this.ctx.confirm.confirm(key))
                     return;
-                if (closesMenu)
+                if (opensWindow)
                     this.ctx.closeMenu();
-                this.ctx.runAction(this.id, key, async () => run(), {refresh});
+                this.ctx.runAction(this.id, key, run, {refresh: !opensWindow});
             },
         });
     }
@@ -156,7 +156,7 @@ export class SourceView {
     openUrlButton(url, accessibleName) {
         return this.actionButton({
             key: `open:${url}`, iconName: 'web-browser-symbolic', accessibleName,
-            closesMenu: true, refresh: false, run: () => openUri(url),
+            opensWindow: true, run: () => openUri(url),
         });
     }
 
@@ -166,18 +166,19 @@ export class SourceView {
      */
     renderFiltered(list, items, rowFn, {maxRows, emptyIcon, emptyTitle, emptyHint = ''}) {
         if (!items.length) {
-            const q = this.query.trim();
-            list.add_child(emptyState({
-                iconName: emptyIcon,
-                title: q ? `Nothing matches “${q}”` : emptyTitle,
-                hint: q ? '' : emptyHint,
-            }));
+            this.emptyResult(list, emptyIcon, emptyTitle, emptyHint);
             return;
         }
         for (const item of items.slice(0, maxRows))
             list.add_child(rowFn(item));
         if (items.length > maxRows)
             list.add_child(label(`… ${items.length - maxRows} more, refine the filter`, 'opsdeck-note'));
+    }
+
+    /** "Nothing matches …" while searching, otherwise the given empty state. */
+    emptyResult(list, iconName, title, hint = '') {
+        const q = this.query.trim();
+        list.add_child(emptyState({iconName, title: q ? `Nothing matches “${q}”` : title, hint: q ? '' : hint}));
     }
 
     /** Section heading inside a list. */

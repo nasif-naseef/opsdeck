@@ -23,10 +23,6 @@ export function label(text, styleClass = '', props = {}) {
     return l;
 }
 
-export function spacer() {
-    return new St.Widget({x_expand: true});
-}
-
 /**
  * @param {object} o
  * @param {string} [o.label]
@@ -67,11 +63,25 @@ export function chip(text, variant = '') {
     return label(text, `opsdeck-chip ${variant ? `opsdeck-chip-${variant}` : ''}`);
 }
 
+/** Card with a title and an optional headline value (coloured by level). */
+export function card(title, value = '', level = null) {
+    const box = vbox({style_class: 'opsdeck-usage', x_expand: true});
+    const head = hbox({x_expand: true});
+    head.add_child(label(title, 'opsdeck-usage-title', {x_expand: true}));
+    if (value)
+        head.add_child(label(value, `opsdeck-usage-pct ${level ? `opsdeck-level-${level}` : 'opsdeck-usage-plain'}`));
+    box.add_child(head);
+    return box;
+}
+
 /** Horizontal usage bar; `level` is ok | warn | critical. */
 export function usageBar(pct, level) {
     // A box packs from the start, so the fill grows from the left edge.
     const track = hbox({style_class: 'opsdeck-bar', x_expand: true});
-    const fill = new St.Widget({style_class: `opsdeck-bar-fill opsdeck-level-${level}`, y_expand: true});
+    // No y_expand here: expand flags propagate to ancestors, and the bar
+    // would swell to fill any spare height in its card. A horizontal box
+    // already stretches the fill to the track's height.
+    const fill = new St.Widget({style_class: `opsdeck-bar-fill opsdeck-level-${level}`});
     track.add_child(fill);
     track.connect('notify::width', () => {
         fill.width = Math.round(track.width * Math.min(100, Math.max(0, pct)) / 100);
@@ -111,7 +121,7 @@ export function banner(text, variant = 'warn') {
     return b;
 }
 
-export function copyToClipboard(text) {
+function copyToClipboard(text) {
     St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
 }
 
@@ -135,7 +145,9 @@ export function copyButton(getText, accessibleName) {
  * @param {string[]} [o.styleClasses] - one per series, for colours
  */
 export function sparkline(series, {max = null, styleClasses = ['opsdeck-spark-a', 'opsdeck-spark-b']} = {}) {
-    const box = new St.Widget({style_class: 'opsdeck-spark', x_expand: true,
+    // y_expand set explicitly so the drawing areas' expand flags don't
+    // propagate up and stretch the card (height comes from CSS).
+    const box = new St.Widget({style_class: 'opsdeck-spark', x_expand: true, y_expand: false,
         layout_manager: new Clutter.BinLayout()});
     const peak = Math.max(max ?? 0, ...series.flat(), 1e-9);
     series.forEach((values, i) => {
@@ -185,7 +197,8 @@ export function coreStrip(percents) {
     for (const pct of percents) {
         const level = usageLevel(pct);
         // Spacer on top, fill at the bottom.
-        const track = vbox({style_class: 'opsdeck-core', width, height});
+        // Explicit y_expand: false keeps the spacer's expand flag inside the track.
+        const track = vbox({style_class: 'opsdeck-core', width, height, y_expand: false});
         track.add_child(new St.Widget({y_expand: true}));
         track.add_child(new St.Widget({
             style_class: `opsdeck-core-fill opsdeck-level-${level}`,

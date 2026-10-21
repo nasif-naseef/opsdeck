@@ -88,7 +88,7 @@ export async function escalate({signals, send, alive, scope, what}) {
         // pkill exits 1 when nothing matched, i.e. the target is already gone.
         if (!r.ok && r.status !== 1)
             return actionResult(false, r.stderr.trim() || `SIG${sig} failed`);
-        // Give polite signals up to 2s, KILL a moment.
+        // Give polite signals ~1.5s to take effect, KILL ~0.3s.
         const polls = sig === 'KILL' ? 2 : 10;
         for (let i = 0; i < polls; i++) {
             await scope.sleep(150);
@@ -112,6 +112,8 @@ export async function signalLadder(pid, scope, {signals = ['TERM', 'KILL'], expe
     const kill = which('kill');
     if (!kill)
         return actionResult(false, '`kill` is not installed');
+    // Checked up front too, so a target that is already gone (or never was
+    // ours) is reported as such rather than as a successful stop.
     const blocker = signalBlocker(await procInfo(pid, scope.cancellable), {expectComm});
     if (blocker)
         return actionResult(false, blocker);

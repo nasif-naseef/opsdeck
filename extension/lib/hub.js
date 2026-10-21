@@ -76,7 +76,10 @@ export class Hub extends Emitter {
      * What the top-bar counter and nav badge show for a source, or null when
      * there is nothing to show yet.
      *
-     * @returns {{value: number, text: string, level: string|null, gauge: boolean} | null}
+     * `quiet` marks an empty count (nothing running): the badge hides it and
+     * the top bar does when "hide zero counters" is on. Gauges are never quiet.
+     *
+     * @returns {{value: number, text: string, level: string|null, quiet: boolean} | null}
      */
     display(id) {
         const s = this.state[id];
@@ -85,10 +88,10 @@ export class Hub extends Emitter {
         const source = this.sources[id];
         if (source.gauge) {
             const g = source.gauge(s.data, this._settings);
-            return g && {value: g.value, text: `${g.value}${g.unit}`, level: g.level, gauge: true};
+            return g && {value: g.value, text: `${g.value}${g.unit}`, level: g.level, quiet: false};
         }
         const n = source.count(s.data, this._settings);
-        return {value: n, text: String(n), level: null, gauge: false};
+        return {value: n, text: String(n), level: null, quiet: n === 0};
     }
 
     /** The source whose tab is on screen (or null): only it fetches details. */
@@ -120,13 +123,11 @@ export class Hub extends Emitter {
         s.loading = true;
         this.emit('loading', id);
 
-        let changed = false;
         try {
             const data = await this.sources[id].fetch({force});
             if (gen !== this._generation[id] || this._scope.disposed)
                 return;
             Object.assign(s, {data, error: null, updatedAt: Date.now()});
-            changed = true;
         } catch (e) {
             if (gen !== this._generation[id] || this._scope.disposed || e instanceof CancelledError)
                 return;
@@ -135,19 +136,20 @@ export class Hub extends Emitter {
             s.error = e instanceof SourceError ? e : new SourceError('error', String(e.message ?? e));
             if (CLEARS_DATA.has(s.error.kind))
                 s.data = null;
-            changed = true;
         } finally {
             if (gen === this._generation[id] && !this._scope.disposed) {
                 this._inflight[id] = false;
                 s.loading = false;
-                if (changed)
-                    this.emit('changed', id);
                 if (this._visible === id && s.data !== null)
                     this._refreshDetails(id);
                 if (this._again[id]) {
                     this._again[id] = false;
                     this.refresh(id, {force: true});
                 }
+                // Last, and even when nothing new arrived (a cancelled fetch),
+                // so the "refreshing" note always clears. Emitter isolates
+                // handler exceptions, so the follow-ups above always run.
+                this.emit('changed', id);
             }
         }
     }

@@ -113,16 +113,8 @@ export class ClaudeSource {
 
     async fetch({force = false} = {}) {
         const now = Date.now();
-        const gap = force ? MIN_FORCED_GAP_MS : MIN_FETCH_GAP_MS;
-        // Back off between API calls whether or not the last one succeeded,
-        // so a failing or rate-limited endpoint isn't hit on every menu open.
-        if (now - this._lastAttempt < gap) {
-            if (this._last)
-                return this._last;
-            if (this._lastError)
-                throw this._lastError;
-        }
-
+        // Local state first (a cheap file read): a cached reading must never
+        // hide that Claude Code is signed out or its sign-in expired.
         const creds = parseCredentials(await readText(credentialsPath(), this._scope.cancellable), now);
         if (creds.state === 'signed-out') {
             this._last = null;
@@ -131,6 +123,15 @@ export class ClaudeSource {
         }
         if (creds.state === 'expired' || creds.token === this._rejectedToken)
             throw this._expired();
+
+        // Back off between API calls whether or not the last one succeeded,
+        // so a failing or rate-limited endpoint isn't hit on every menu open.
+        if (now - this._lastAttempt < (force ? MIN_FORCED_GAP_MS : MIN_FETCH_GAP_MS)) {
+            if (this._last)
+                return this._last;
+            if (this._lastError)
+                throw this._lastError;
+        }
 
         this._lastAttempt = now;
         let status, body;

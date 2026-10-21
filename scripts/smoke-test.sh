@@ -50,8 +50,23 @@ dbus-run-session -- bash -euo pipefail -c '
 echo "── smoke log ──"
 grep -E 'SMOKE|OpsDeck|opsdeck' "$LOG" | grep -vE 'Activating service|Successfully activated' || true
 
-ERRORS="$(grep -nE 'JS ERROR|JS WARNING|TypeError|ReferenceError|already disposed|was not found when attempting|CRITICAL' "$LOG" \
-    | grep -iE 'opsdeck' || true)"
+# GJS prints the error text and its stack (with the file path) on separate
+# lines, so judge each error line together with the stack frames under it.
+ERRORS="$(awk '
+    { line[NR] = $0 }
+    END {
+        for (i = 1; i <= NR; i++) {
+            if (line[i] !~ /JS ERROR|JS WARNING|TypeError|ReferenceError|already disposed|was not found when attempting|CRITICAL/)
+                continue
+            # The error line plus the stack frames ("fn@file.js:12:3") under it.
+            block = line[i]
+            for (j = i + 1; j <= NR && line[j] ~ /@.*\.js:[0-9]+/; j++)
+                block = block "\n" line[j]
+            if (tolower(block) ~ /opsdeck/)
+                print block "\n---"
+        }
+    }
+' "$LOG")"
 if ! grep -q 'SMOKE DONE' "$LOG"; then
     echo "FAIL: driver did not finish"
     exit 1

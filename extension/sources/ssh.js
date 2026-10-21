@@ -89,12 +89,6 @@ export function parseEstablished(raw) {
 }
 
 /**
- * Extract the destination from an ssh client's argv (from /proc/PID/cmdline).
- *
- * @param {string[]} argv
- * @returns {string|null} e.g. "deploy@web-1" or "ssh://host:2222"
- */
-/**
  * @typedef {object} Forward
  * @property {'L'|'R'|'D'} type - local, remote or dynamic (SOCKS)
  * @property {string} listen - "8080" or "127.0.0.1:8080" (bind address kept when given)
@@ -144,11 +138,6 @@ export function parseSshArgs(argv) {
         }
     }
     return {target: target === null ? null : withLogin(target, login), forwards};
-}
-
-/** Back-compat helper: just the destination. */
-export function parseSshTarget(argv) {
-    return parseSshArgs(argv).target;
 }
 
 /** Split on ':' but keep "[v6:addr]" together, stripping the brackets. */
@@ -263,26 +252,41 @@ export class SshSource {
         if (!session.own)
             return actionResult(false, 'Only your own sessions can be ended');
         return session.direction === 'in'
-            ? this._endTty(session.tty)
+            ? this._endTty(session)
             : this._endPid(session.pid);
     }
 
-    async _endTty(tty) {
+    /** Is this exact remote login (user, tty, origin) still in `who`? */
+    async _stillLoggedIn(session) {
+        const who = which('who');
+        const r = who ? await run([who], {cancellable: this._scope.cancellable}) : null;
+        return Boolean(r?.ok) && parseWho(r.stdout).some(s =>
+            s.user === session.user && s.tty === session.tty && s.from === session.from);
+    }
+
+    async _endTty(session) {
+        const {tty} = session;
         const pkill = which('pkill');
-        const pgrep = which('pgrep');
-        if (!pkill || !pgrep)
-            return actionResult(false, '`pkill`/`pgrep` not installed');
+        if (!pkill)
+            return actionResult(false, '`pkill` is not installed');
         if (!TTY_RE.test(tty))
             return actionResult(false, `Refusing unexpected TTY "${tty}"`);
-        // A login session is a process tree on its tty; pkill -u me -t only
-        // reaches our own processes on it.
+        // The list can be a poll old: by now the login may have ended and its
+        // tty been reused (e.g. by a local terminal). Only signal while `who`
+        // still shows this very remote login on it.
+        if (!await this._stillLoggedIn(session))
+            return actionResult(false, `The session on ${tty} has already ended`);
         const opts = {cancellable: this._scope.cancellable};
         return escalate({
             signals: SSH_SIGNALS,
             scope: this._scope,
             what: `session on ${tty}`,
-            send: sig => run([pkill, `-${sig}`, '-u', this._me, '-t', tty], opts),
-            alive: async () => (await run([pgrep, '-u', this._me, '-t', tty], opts)).ok,
+            // A login session is a process tree on its tty; pkill -u me -t
+            // only reaches our own processes on it.
+            send: async sig => (await this._stillLoggedIn(session)
+                ? run([pkill, `-${sig}`, '-u', this._me, '-t', tty], opts)
+                : {ok: false, status: 1, stderr: ''}),
+            alive: () => this._stillLoggedIn(session),
         });
     }
 

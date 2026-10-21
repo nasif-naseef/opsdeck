@@ -57,17 +57,17 @@ export class DockerView extends SourceView {
             accessibleName: `${text} ${c.name}`,
             run: () => docker.act(v, c),
         });
-        const window = (v, text, accessibleName, open) => this.actionButton({
-            key: `docker:${v}:${c.id}`, text, accessibleName, closesMenu: true, refresh: false, run: open,
+        const opener = (v, text, accessibleName, open) => this.actionButton({
+            key: `docker:${v}:${c.id}`, text, accessibleName, opensWindow: true, run: open,
         });
         if (c.running) {
             actions.add_child(verb('stop', 'Stop', true));
             actions.add_child(verb('restart', 'Restart', true));
-            actions.add_child(window('shell', 'Shell', `Open a shell in ${c.name}`, () => docker.openShell(c)));
+            actions.add_child(opener('shell', 'Shell', `Open a shell in ${c.name}`, () => docker.openShell(c)));
         } else {
             actions.add_child(verb('start', 'Start', false));
         }
-        actions.add_child(window('logs', 'Logs', `Follow logs of ${c.name}`, () => docker.openLogs(c)));
+        actions.add_child(opener('logs', 'Logs', `Follow logs of ${c.name}`, () => docker.openLogs(c)));
         actions.add_child(copyButton(() => c.id, `Copy ID of ${c.name}`));
         row.add_child(actions);
         return row;

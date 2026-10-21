@@ -18,7 +18,7 @@ import {PortsView} from './views/ports.js';
 import {SshView} from './views/ssh.js';
 import {SystemView} from './views/system.js';
 
-export const MODULES = {
+const MODULES = {
     claude: {title: 'Claude', heading: 'Claude Usage', View: ClaudeView},
     system: {title: 'System', heading: 'This Machine', View: SystemView},
     ports: {title: 'Ports', heading: 'Listening Ports', View: PortsView},
@@ -58,7 +58,6 @@ export class Deck {
             runAction: (id, key, fn, opts) => this._runAction(id, key, fn, opts),
             openPreferences,
             closeMenu,
-            icon,
         };
 
         this.actor = hbox({style_class: 'opsdeck-deck'});
@@ -236,7 +235,7 @@ export class Deck {
     _updateBadge(id) {
         const {badge} = this._navButtons[id];
         const d = this._hub.display(id);
-        badge.visible = d !== null && (d.gauge || d.value !== 0);
+        badge.visible = d !== null && !d.quiet;
         badge.style_class = 'opsdeck-nav-badge';
         if (!badge.visible)
             return;

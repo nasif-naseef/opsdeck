@@ -49,17 +49,12 @@ export function parseListening(raw) {
     return [...byKey.values()].sort((a, b) => a.port - b.port || a.proto.localeCompare(b.proto));
 }
 
-/** Port range filter from settings. */
-export function inRange(entry, min, max) {
-    return entry.port >= min && entry.port <= max;
-}
-
 /** Entries the user asked to see (range + protocol settings). */
 export function visiblePorts(entries, settings) {
     const min = settings.get_int('port-range-min');
     const max = settings.get_int('port-range-max');
     const udp = settings.get_boolean('ports-show-udp');
-    return entries.filter(e => inRange(e, min, max) && (udp || e.proto === 'tcp'));
+    return entries.filter(e => e.port >= min && e.port <= max && (udp || e.proto === 'tcp'));
 }
 
 export function matchesPort(entry, query) {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import {matchesSession} from '../../sources/ssh.js';
-import {chip, copyButton, emptyState, hbox, label, vbox} from '../widgets.js';
+import {chip, copyButton, hbox, label, vbox} from '../widgets.js';
 import {SourceView} from './base.js';
 
 const FORWARD_KIND = {L: ['LOCAL', 'in'], R: ['REMOTE', 'out'], D: ['SOCKS', 'muted']};
@@ -11,7 +11,7 @@ function listenAddress(listen) {
     return /^\d+$/.test(listen) ? `localhost:${listen}` : listen;
 }
 
-export function describeForward(f, via) {
+function describeForward(f, via) {
     const what = f.type === 'D' ? `SOCKS proxy on ${listenAddress(f.listen)}`
         : f.type === 'L' ? `${listenAddress(f.listen)} → ${f.to}`
             : `remote ${f.listen} → ${f.to ?? 'SOCKS'}`;
@@ -32,11 +32,8 @@ export class SshView extends SourceView {
         const out = outgoing.filter(s => matchesSession(s, this.query));
 
         if (!inc.length && !out.length) {
-            list.add_child(emptyState({
-                iconName: 'network-idle-symbolic',
-                title: this.query ? `Nothing matches “${this.query.trim()}”` : 'No SSH sessions',
-                hint: this.query ? '' : 'Remote logins to this machine and ssh connections you open appear here.',
-            }));
+            this.emptyResult(list, 'network-idle-symbolic', 'No SSH sessions',
+                'Remote logins to this machine and ssh connections you open appear here.');
             return;
         }
 

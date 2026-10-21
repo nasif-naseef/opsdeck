@@ -21,7 +21,6 @@ import {usageLevel} from '../lib/format.js';
 Gio._promisify(Gio.File.prototype, 'query_filesystem_info_async');
 
 const HISTORY = 60;            // samples kept for sparklines
-const DETAILS_MIN_GAP_MS = 2500;
 const TOP_ROWS = 6;
 
 /** Synchronous sysfs directory listing; only used once, for discovery. */
@@ -241,7 +240,9 @@ export class SystemSource {
     }
 
     async _battery() {
-        const bat = listDir('/sys/class/power_supply').find(n => /^BAT\d+$/.test(n));
+        // Discovered once (sync sysfs listing); laptops don't grow batteries.
+        this._batteryDir ??= listDir('/sys/class/power_supply').find(n => /^BAT\d+$/.test(n)) ?? '';
+        const bat = this._batteryDir;
         if (!bat)
             return null;
         const base = `/sys/class/power_supply/${bat}`;

@@ -94,11 +94,10 @@ class OpsDeckIndicator extends PanelMenu.Button {
     _updateCounter(id) {
         const {actor, text} = this._counters[id];
         const d = this._hub.display(id);
-        // A gauge at 0% is still information; an empty count is not.
         const show = this._settings.get_boolean('show-panel-counters') &&
             this._settings.get_boolean(`show-${id}-counter`) &&
             d !== null &&
-            (d.gauge || d.value !== 0 || !this._settings.get_boolean('hide-zero-counters'));
+            !(d.quiet && this._settings.get_boolean('hide-zero-counters'));
         actor.visible = show;
         if (show) {
             text.text = d.text;

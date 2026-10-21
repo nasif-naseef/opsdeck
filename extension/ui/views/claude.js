@@ -3,7 +3,7 @@
 import GLib from 'gi://GLib';
 
 import {formatDuration, usageLevel} from '../../lib/format.js';
-import {banner, emptyState, hbox, label, usageBar, vbox} from '../widgets.js';
+import {banner, card, emptyState, label, usageBar} from '../widgets.js';
 import {SourceView} from './base.js';
 
 const STALE_TEXT = {
@@ -31,23 +31,18 @@ export class ClaudeView extends SourceView {
         }
 
         for (const w of usage.windows) {
-            const card = vbox({style_class: 'opsdeck-usage', x_expand: true});
             const level = usageLevel(w.pct);
-
-            const top = hbox({x_expand: true});
-            top.add_child(label(w.label, 'opsdeck-usage-title', {x_expand: true}));
-            top.add_child(label(`${w.pct}%`, `opsdeck-usage-pct opsdeck-level-${level}`));
-            card.add_child(top);
-            card.add_child(usageBar(w.pct, level));
+            const c = card(w.label, `${w.pct}%`, level);
+            c.add_child(usageBar(w.pct, level));
 
             if (w.resetsAt) {
                 const left = w.resetsAt - Date.now();
                 const at = GLib.DateTime.new_from_unix_local(Math.floor(w.resetsAt / 1000));
                 const when = left > 86_400_000 ? at.format('%a %H:%M') : at.format('%H:%M');
-                card.add_child(label(left > 0 ? `Resets in ${formatDuration(left)} · ${when}` : 'Resetting now',
+                c.add_child(label(left > 0 ? `Resets in ${formatDuration(left)} · ${when}` : 'Resetting now',
                     'opsdeck-meta'));
             }
-            list.add_child(card);
+            list.add_child(c);
         }
     }
 }

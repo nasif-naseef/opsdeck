@@ -5,18 +5,8 @@
 
 import {formatDuration, usageLevel} from '../../lib/format.js';
 import {formatBytes, formatRate} from '../../lib/procfs.js';
-import {coreStrip, hbox, label, sparkline, usageBar, vbox} from '../widgets.js';
+import {card, coreStrip, hbox, label, sparkline, usageBar, vbox} from '../widgets.js';
 import {SourceView} from './base.js';
-
-function card(title, value = '', level = null) {
-    const box = vbox({style_class: 'opsdeck-usage', x_expand: true});
-    const head = hbox({x_expand: true});
-    head.add_child(label(title, 'opsdeck-usage-title', {x_expand: true}));
-    if (value)
-        head.add_child(label(value, `opsdeck-usage-pct ${level ? `opsdeck-level-${level}` : 'opsdeck-usage-plain'}`));
-    box.add_child(head);
-    return box;
-}
 
 const pct = v => `${Math.round(v)}%`;
 

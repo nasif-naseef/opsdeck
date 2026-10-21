@@ -24,8 +24,13 @@ const check = (name, cond, detail = '') => {
     const t0 = Date.now();
     const r = await launchInTerminal(['docker', 'logs', '--follow', 'abc123'], scope);
     const took = Date.now() - t0;
-    const [, bytes] = GLib.file_get_contents(log);
-    const calls = new TextDecoder().decode(bytes).trim().split('\n');
+    // Real terminals are not waited on, so give the fake one a moment to log.
+    let calls = [];
+    for (let i = 0; i < 20 && calls.length < 2; i++) {
+        await scope.sleep(50);
+        const [, bytes] = GLib.file_get_contents(log);
+        calls = new TextDecoder().decode(bytes).trim().split('\n').filter(Boolean);
+    }
     check('falls back past a launcher that exits non-zero at once', r.ok && r.message === 'Opened in ptyxis',
         JSON.stringify(r));
     check('both launchers were tried, in order', calls.length === 2 &&
@@ -33,6 +38,7 @@ const check = (name, cond, detail = '') => {
     check('ptyxis receives a safely quoted command', calls[1] === "ptyxis --new-window -x 'docker' 'logs' '--follow' 'abc123'",
         calls[1]);
     check('a fast failure costs well under the 1.5s wait', took < 1400, `${took}ms`);
+
     scope.dispose();
 })().catch(e => {
     print(`✗ crashed: ${e.stack}`);
