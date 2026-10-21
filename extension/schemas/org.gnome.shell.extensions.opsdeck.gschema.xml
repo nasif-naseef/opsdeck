@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.opsdeck" path="/org/gnome/shell/extensions/opsdeck/">
+
+    <!-- Top bar -->
+    <key name="show-panel-counters" type="b">
+      <default>true</default>
+      <summary>Show counters in the top bar</summary>
+    </key>
+    <key name="show-claude-counter" type="b">
+      <default>true</default>
+      <summary>Show Claude usage in the top bar</summary>
+    </key>
+    <key name="show-ports-counter" type="b">
+      <default>true</default>
+      <summary>Show listening-port count in the top bar</summary>
+    </key>
+    <key name="show-ssh-counter" type="b">
+      <default>true</default>
+      <summary>Show SSH session count in the top bar</summary>
+    </key>
+    <key name="show-docker-counter" type="b">
+      <default>true</default>
+      <summary>Show running-container count in the top bar</summary>
+    </key>
+    <key name="hide-zero-counters" type="b">
+      <default>false</default>
+      <summary>Hide counters whose value is zero</summary>
+    </key>
+
+    <!-- Modules -->
+    <key name="enable-claude" type="b">
+      <default>true</default>
+      <summary>Enable the Claude usage module</summary>
+      <description>When disabled, OpsDeck never reads Claude Code credentials or contacts the network.</description>
+    </key>
+    <key name="enable-ports" type="b">
+      <default>true</default>
+      <summary>Enable the listening ports module</summary>
+    </key>
+    <key name="enable-ssh" type="b">
+      <default>true</default>
+      <summary>Enable the SSH sessions module</summary>
+    </key>
+    <key name="enable-docker" type="b">
+      <default>true</default>
+      <summary>Enable the Docker module</summary>
+    </key>
+
+    <!-- Refresh intervals (seconds) -->
+    <key name="refresh-interval-claude" type="i">
+      <range min="60" max="1800"/>
+      <default>120</default>
+      <summary>Claude usage refresh interval in seconds</summary>
+    </key>
+    <key name="refresh-interval-ports" type="i">
+      <range min="2" max="600"/>
+      <default>10</default>
+      <summary>Ports refresh interval in seconds</summary>
+    </key>
+    <key name="refresh-interval-ssh" type="i">
+      <range min="2" max="600"/>
+      <default>10</default>
+      <summary>SSH refresh interval in seconds</summary>
+    </key>
+    <key name="refresh-interval-docker" type="i">
+      <range min="2" max="600"/>
+      <default>10</default>
+      <summary>Docker refresh interval in seconds</summary>
+    </key>
+
+    <!-- Module options -->
+    <key name="claude-panel-window" type="s">
+      <choices>
+        <choice value="5h"/>
+        <choice value="7d"/>
+        <choice value="max"/>
+      </choices>
+      <default>'max'</default>
+      <summary>Which Claude limit the top bar shows</summary>
+      <description>5h: session window. 7d: weekly window. max: whichever is closest to its limit.</description>
+    </key>
+    <key name="port-range-min" type="i">
+      <range min="1" max="65535"/>
+      <default>1</default>
+      <summary>Lowest port shown</summary>
+    </key>
+    <key name="port-range-max" type="i">
+      <range min="1" max="65535"/>
+      <default>65535</default>
+      <summary>Highest port shown</summary>
+    </key>
+    <key name="ports-show-udp" type="b">
+      <default>false</default>
+      <summary>Include UDP sockets in the ports list</summary>
+    </key>
+    <key name="docker-show-stopped" type="b">
+      <default>true</default>
+      <summary>List stopped containers too</summary>
+    </key>
+    <key name="confirm-destructive" type="b">
+      <default>true</default>
+      <summary>Require a second click to kill, stop or restart</summary>
+    </key>
+
+    <!-- UI state -->
+    <key name="last-tab" type="s">
+      <default>'claude'</default>
+      <summary>Tab shown when the menu opens</summary>
+    </key>
+  </schema>
+</schemalist>

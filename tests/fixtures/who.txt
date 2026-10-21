@@ -1,0 +1,8 @@
+alice    seat0        2026-10-19 09:01 (login screen)
+alice    tty2         2026-10-19 09:01 (tty2)
+alice    pts/0        2026-10-21 10:12 (:0)
+alice    pts/1        2026-10-21 10:13 (tmux(1234).%0)
+deploy   pts/3        2026-10-21 11:02 (203.0.113.50)
+bob      pts/4        2026-10-21 11:05 (fe80::1%eth0)
+carol    pts/5        2026-10-21 11:06 (laptop.example.lan)
+alice    tty3         2026-10-21 11:07

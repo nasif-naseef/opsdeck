@@ -1,0 +1,9 @@
+{
+  "uuid": "opsdeck@nasif-naseef.github.io",
+  "name": "OpsDeck",
+  "description": "Your dev machine at a glance: listening ports, SSH sessions, Docker containers and Claude plan usage in one top-bar menu, with kill, end, start/stop/restart and shell actions.",
+  "shell-version": ["48", "49", "50"],
+  "url": "https://github.com/nasif-naseef/opsdeck",
+  "settings-schema": "org.gnome.shell.extensions.opsdeck",
+  "version-name": "1.0.0"
+}

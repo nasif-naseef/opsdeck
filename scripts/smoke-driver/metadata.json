@@ -1,0 +1,6 @@
+{
+  "uuid": "opsdeck-smoke-driver@local",
+  "name": "OpsDeck smoke-test driver",
+  "description": "Test-only. Drives OpsDeck inside a sandboxed headless shell. Never installed for real.",
+  "shell-version": ["48", "49", "50"]
+}

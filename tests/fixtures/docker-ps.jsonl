@@ -1,0 +1,4 @@
+{"Command":"\"docker-entrypoint.s…\"","ID":"df7429221be7","Image":"redis:8","Labels":"com.docker.compose.project=shop,com.docker.compose.service=cache","Names":"shop-cache-1","Ports":"127.0.0.1:32918->6379/tcp","State":"running","Status":"Up About an hour"}
+{"ID":"b6eb08a943bd","Image":"ghcr.io/acme/api:latest","Labels":"","Names":"api","Ports":"0.0.0.0:8080->80/tcp, :::8080->80/tcp, 9000/tcp","State":"exited","Status":"Exited (0) 2 days ago"}
+not json
+{"ID":"0123456789ab","Image":"postgres:18","Labels":"com.docker.compose.project=shop","Names":"shop-db-1","Ports":"","State":"running","Status":"Up 3 hours (healthy)"}

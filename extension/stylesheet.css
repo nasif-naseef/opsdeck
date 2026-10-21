@@ -1,0 +1,374 @@
+/* SPDX-License-Identifier: MIT
+ *
+ * OpsDeck. Neutral translucent greys and the system accent colour keep it
+ * readable in both the light and dark shell styles.
+ */
+
+/* ── Top bar ─────────────────────────────────────────────── */
+
+.opsdeck-counters {
+  spacing: 10px;
+}
+
+.opsdeck-counter {
+  spacing: 4px;
+}
+
+.opsdeck-counter-icon {
+  icon-size: 14px;
+}
+
+.opsdeck-counter-label {
+  font-feature-settings: "tnum";
+  font-weight: 600;
+}
+
+.opsdeck-counter.opsdeck-level-warn { color: #f5c211; }
+.opsdeck-counter.opsdeck-level-critical { color: #ff7b63; }
+
+/* ── Menu shell ──────────────────────────────────────────── */
+
+.opsdeck-menu {
+  padding: 0;
+}
+
+.opsdeck-menu-item,
+.opsdeck-menu-item:hover,
+.opsdeck-menu-item:active {
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+}
+
+.opsdeck-deck {
+  width: 580px;
+  height: 520px;
+}
+
+/* nav rail */
+.opsdeck-nav {
+  width: 150px;
+  padding: 10px 8px;
+  spacing: 2px;
+  background-color: rgba(127, 127, 127, 0.08);
+  border-radius: 12px 0 0 12px;
+}
+
+.opsdeck-nav-button {
+  padding: 8px 10px;
+  border-radius: 9px;
+  transition-duration: 120ms;
+}
+
+.opsdeck-nav-button:hover,
+.opsdeck-nav-button:focus {
+  background-color: rgba(127, 127, 127, 0.16);
+}
+
+.opsdeck-nav-button:checked {
+  background-color: -st-accent-color;
+  color: -st-accent-fg-color;
+}
+
+.opsdeck-nav-content {
+  spacing: 10px;
+}
+
+.opsdeck-nav-icon {
+  icon-size: 16px;
+}
+
+.opsdeck-nav-label {
+  font-weight: 600;
+}
+
+.opsdeck-nav-badge {
+  font-size: 0.8em;
+  font-weight: 700;
+  font-feature-settings: "tnum";
+  padding: 1px 7px;
+  border-radius: 99px;
+  background-color: rgba(127, 127, 127, 0.22);
+}
+
+.opsdeck-nav-button:checked .opsdeck-nav-badge {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.opsdeck-nav-badge.opsdeck-level-warn { background-color: rgba(245, 194, 17, 0.35); }
+.opsdeck-nav-badge.opsdeck-level-critical { background-color: rgba(224, 27, 36, 0.45); }
+
+/* main column */
+.opsdeck-main {
+  padding: 12px 12px 8px 14px;
+  spacing: 8px;
+}
+
+.opsdeck-header {
+  spacing: 4px;
+  padding-bottom: 2px;
+}
+
+.opsdeck-title {
+  font-size: 1.15em;
+  font-weight: 800;
+}
+
+.opsdeck-subtitle {
+  font-size: 0.85em;
+  color: rgba(127, 127, 127, 1);
+}
+
+.opsdeck-scroll {
+  padding-right: 4px;
+}
+
+.opsdeck-view,
+.opsdeck-list {
+  spacing: 6px;
+}
+
+/* ── Toolbar & buttons ───────────────────────────────────── */
+
+.opsdeck-toolbar {
+  spacing: 6px;
+}
+
+.opsdeck-search {
+  border-radius: 9px;
+  padding: 6px 10px;
+}
+
+.opsdeck-search-icon {
+  icon-size: 14px;
+  padding-right: 6px;
+}
+
+.opsdeck-button {
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 0.9em;
+  font-weight: 600;
+  background-color: rgba(127, 127, 127, 0.16);
+  transition-duration: 120ms;
+}
+
+.opsdeck-button:hover,
+.opsdeck-button:focus {
+  background-color: rgba(127, 127, 127, 0.28);
+}
+
+.opsdeck-button:insensitive {
+  color: rgba(127, 127, 127, 0.8);
+}
+
+.opsdeck-button-icon-only {
+  padding: 6px;
+  border-radius: 99px;
+  background-color: transparent;
+}
+
+.opsdeck-button-icon {
+  icon-size: 16px;
+}
+
+.opsdeck-button-flat {
+  margin-top: 6px;
+}
+
+.opsdeck-button-suggested {
+  background-color: -st-accent-color;
+  color: -st-accent-fg-color;
+}
+
+.opsdeck-button-danger:hover,
+.opsdeck-button-danger:focus {
+  background-color: rgba(224, 27, 36, 0.3);
+}
+
+.opsdeck-armed,
+.opsdeck-armed:hover {
+  background-color: #e01b24;
+  color: #ffffff;
+}
+
+/* ── Rows ────────────────────────────────────────────────── */
+
+.opsdeck-row {
+  spacing: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background-color: rgba(127, 127, 127, 0.08);
+}
+
+.opsdeck-row-stacked {
+  spacing: 6px;
+}
+
+.opsdeck-row-stacked > StBoxLayout {
+  spacing: 10px;
+}
+
+.opsdeck-row-info {
+  spacing: 1px;
+}
+
+.opsdeck-row-info > StBoxLayout {
+  spacing: 6px;
+}
+
+.opsdeck-row-title {
+  font-weight: 700;
+}
+
+.opsdeck-dim {
+  color: rgba(127, 127, 127, 1);
+  font-weight: 600;
+}
+
+.opsdeck-row-actions {
+  spacing: 2px;
+}
+
+.opsdeck-row-actions-below {
+  spacing: 6px;
+  padding-left: 22px;
+}
+
+.opsdeck-meta {
+  font-size: 0.85em;
+  color: rgba(127, 127, 127, 1);
+}
+
+.opsdeck-note {
+  font-size: 0.85em;
+  color: rgba(127, 127, 127, 1);
+  padding: 0 4px;
+}
+
+.opsdeck-heading {
+  font-size: 0.8em;
+  font-weight: 800;
+  color: rgba(127, 127, 127, 1);
+  padding: 6px 4px 0;
+}
+
+.opsdeck-port {
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 1.05em;
+  min-width: 56px;
+  text-align: right;
+  color: -st-accent-color;
+}
+
+.opsdeck-chip {
+  font-size: 0.72em;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background-color: rgba(127, 127, 127, 0.2);
+}
+
+.opsdeck-chip-muted { color: rgba(127, 127, 127, 1); }
+.opsdeck-chip-in { background-color: rgba(53, 132, 228, 0.3); }
+.opsdeck-chip-out { background-color: rgba(255, 120, 0, 0.3); }
+
+/* docker */
+.opsdeck-dot {
+  font-size: 0.9em;
+  min-width: 12px;
+}
+
+.opsdeck-status {
+  font-size: 0.85em;
+}
+
+.opsdeck-state-running { color: #33d17a; }
+.opsdeck-state-paused,
+.opsdeck-state-restarting { color: #f5c211; }
+.opsdeck-state-exited,
+.opsdeck-state-created,
+.opsdeck-state-dead { color: rgba(127, 127, 127, 1); }
+
+/* ── Claude usage ────────────────────────────────────────── */
+
+.opsdeck-usage {
+  spacing: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background-color: rgba(127, 127, 127, 0.08);
+}
+
+.opsdeck-usage-title {
+  font-weight: 700;
+}
+
+.opsdeck-usage-pct {
+  font-size: 1.3em;
+  font-weight: 800;
+  font-feature-settings: "tnum";
+}
+
+.opsdeck-bar {
+  height: 8px;
+  border-radius: 99px;
+  background-color: rgba(127, 127, 127, 0.2);
+}
+
+.opsdeck-bar-fill {
+  border-radius: 99px;
+}
+
+.opsdeck-bar-fill.opsdeck-level-ok { background-color: #33d17a; }
+.opsdeck-bar-fill.opsdeck-level-warn { background-color: #f5c211; }
+.opsdeck-bar-fill.opsdeck-level-critical { background-color: #e01b24; }
+
+.opsdeck-usage-pct.opsdeck-level-ok { color: #33d17a; }
+.opsdeck-usage-pct.opsdeck-level-warn { color: #f5c211; }
+.opsdeck-usage-pct.opsdeck-level-critical { color: #ff7b63; }
+
+/* ── Empty / error states ────────────────────────────────── */
+
+.opsdeck-empty {
+  padding: 36px 16px;
+  spacing: 6px;
+}
+
+.opsdeck-empty-icon {
+  icon-size: 32px;
+  color: rgba(127, 127, 127, 1);
+  padding-bottom: 4px;
+}
+
+.opsdeck-empty-title {
+  font-weight: 700;
+}
+
+.opsdeck-empty-hint {
+  font-size: 0.85em;
+  color: rgba(127, 127, 127, 1);
+  text-align: center;
+}
+
+.opsdeck-empty-error .opsdeck-empty-icon {
+  color: #ff7b63;
+}
+
+.opsdeck-banner {
+  spacing: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.opsdeck-banner-warn {
+  background-color: rgba(245, 194, 17, 0.18);
+}
+
+.opsdeck-banner-icon {
+  icon-size: 14px;
+}
+
+.opsdeck-banner-text {
+  font-size: 0.85em;
+}

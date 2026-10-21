@@ -1,0 +1,11 @@
+udp   UNCONN 0      0                 0.0.0.0:1900       0.0.0.0:*    users:(("spotify",pid=2032548,fd=192))
+udp   UNCONN 0      0                 0.0.0.0:1900       0.0.0.0:*    users:(("spotify",pid=2032548,fd=190))
+udp   UNCONN 0      0           127.0.0.53%lo:53         0.0.0.0:*
+udp   UNCONN 0      0                       *:5353             *:*    users:(("avahi daemon",pid=901,fd=12))
+tcp   LISTEN 0      4096              0.0.0.0:22         0.0.0.0:*
+tcp   LISTEN 0      4096                 [::]:22            [::]:*
+tcp   LISTEN 0      511             127.0.0.1:5173       0.0.0.0:*    users:(("node",pid=4242,fd=23))
+tcp   LISTEN 0      511                 [::1]:5173          [::]:*    users:(("node",pid=4242,fd=24))
+tcp   LISTEN 0      4096              0.0.0.0:8080       0.0.0.0:*    users:(("nginx",pid=310,fd=6),("nginx",pid=311,fd=6))
+tcp   LISTEN 0      128    [fe80::1%enp3s0]:9000            [::]:*    users:(("python3",pid=777,fd=3))
+garbage line that should be ignored
