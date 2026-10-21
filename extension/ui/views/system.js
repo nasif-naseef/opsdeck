@@ -5,7 +5,7 @@
 
 import {formatDuration, usageLevel} from '../../lib/format.js';
 import {formatBytes, formatRate} from '../../lib/procfs.js';
-import {button, coreStrip, hbox, label, sparkline, usageBar, vbox} from '../widgets.js';
+import {coreStrip, hbox, label, sparkline, usageBar, vbox} from '../widgets.js';
 import {SourceView} from './base.js';
 
 function card(title, value = '', level = null) {
@@ -138,19 +138,10 @@ export class SystemView extends SourceView {
         // top reports % of one core, so 400% means four busy cores.
         row.add_child(label(`${p.cpu.toFixed(0)}%`, `opsdeck-usage-pct opsdeck-proc-cpu`));
         if (p.own) {
-            const key = `system:kill:${p.pid}`;
-            const busy = this.ctx.isBusy(key);
-            const armed = this.ctx.confirm.isArmed(key);
-            row.add_child(button({
-                label: busy ? '…' : armed ? 'Kill?' : undefined,
-                iconName: busy || armed ? undefined : 'process-stop-symbolic',
-                styleClass: `opsdeck-button opsdeck-button-danger ${armed ? 'opsdeck-armed' : 'opsdeck-button-icon-only'}`,
-                accessibleName: `${armed ? 'Confirm killing' : 'Kill'} ${p.label ?? p.command} (PID ${p.pid})`,
-                sensitive: !busy,
-                onClick: () => {
-                    if (this.ctx.confirm.confirm(key))
-                        this.ctx.runAction('system', key, () => this.ctx.hub.sources.system.kill(p));
-                },
+            row.add_child(this.actionButton({
+                key: `system:kill:${p.pid}`, iconName: 'process-stop-symbolic', confirmText: 'Kill?',
+                variant: 'danger', accessibleName: `Kill ${p.label ?? p.command} (PID ${p.pid})`,
+                run: () => this.ctx.hub.sources.system.kill(p),
             }));
         }
         return row;

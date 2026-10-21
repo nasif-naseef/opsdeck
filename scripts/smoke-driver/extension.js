@@ -7,6 +7,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
+import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -77,9 +78,12 @@ export default class SmokeDriver extends Extension {
             ]}});
         hub.emit('changed', 'claude');
 
-        // Same for SSH: a made-up outgoing session holding three tunnels.
+        // Same for SSH: a made-up outgoing session holding three tunnels. Its
+        // PID is pid_max, which the kernel never assigns, so clicking End
+        // exercises the whole confirm → signal path without touching anything.
+        const pidMax = Number(new TextDecoder().decode(GLib.file_get_contents('/proc/sys/kernel/pid_max')[1]));
         const fakeSsh = {error: null, updatedAt: Date.now(), data: {incoming: [], outgoing: [{
-            direction: 'out', pid: 424242, host: '203.0.113.7', port: 22, target: 'deploy@bastion', own: true,
+            direction: 'out', pid: pidMax, host: '203.0.113.7', port: 22, target: 'deploy@bastion', own: true,
             forwards: [
                 {type: 'L', listen: '5433', to: 'db.internal:5432'},
                 {type: 'L', listen: '8080', to: 'grafana:3000'},
@@ -96,6 +100,8 @@ export default class SmokeDriver extends Extension {
             // docker stats sample for a few seconds before they appear
             await sleep({docker: 9000, system: 7000}[tab] ?? 1500);
             await screenshot(tab);
+            if (tab === 'ssh')
+                await this._clickEndTwice(indicator, hub, fakeSsh);
             if (tab === 'system') {
                 // Scroll down; the next poll's re-render must keep the position.
                 const adj = indicator()._deck._scroll.vadjustment;
@@ -129,6 +135,33 @@ export default class SmokeDriver extends Extension {
         console.log('SMOKE enable/disable cycles ok');
         await Main.extensionManager.disableExtension(TARGET);
         await sleep(1500); // let any stray timers fire into a disabled extension
+    }
+
+    /** Two-click confirm on a real button; the deferred re-render must not throw. */
+    async _clickEndTwice(indicator, hub, fakeSsh) {
+        const findEnd = () => {
+            const stack = [indicator()._deck._views.ssh.actor];
+            while (stack.length) {
+                const a = stack.pop();
+                if (a instanceof St.Button && /^End\??$/.test(a.label ?? ''))
+                    return a;
+                stack.push(...a.get_children());
+            }
+            return null;
+        };
+        Object.assign(hub.state.ssh, fakeSsh);
+        hub.emit('changed', 'ssh');
+        await sleep(300);
+        findEnd().emit('clicked', 1);
+        await sleep(300);
+        if (findEnd()?.label !== 'End?')
+            throw new Error(`first click did not arm confirm (label: ${findEnd()?.label})`);
+        console.log('SMOKE confirm armed');
+        findEnd().emit('clicked', 1);
+        await sleep(1500);
+        if (indicator()._deck._busy.size !== 0)
+            throw new Error('action left a busy state behind');
+        console.log('SMOKE confirmed action ran and was refused safely');
     }
 
     disable() {}

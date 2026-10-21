@@ -70,7 +70,8 @@ export default class OpsDeckPreferences extends ExtensionPreferences {
 
             const extra = [this._spin(settings, `refresh-interval-${m.id}`, 'Refresh every', 'Seconds')];
             if (m.id === 'claude')
-                extra.push(this._claudeWindowRow(settings));
+                extra.push(this._comboRow(settings, 'claude-panel-window', 'Top bar shows',
+                    ['max', '5h', '7d'], ['Closest to limit', 'Session (5h)', 'Weekly (7d)']));
             if (m.id === 'system') {
                 extra.push(this._comboRow(settings, 'system-panel-metric', 'Top bar shows',
                     ['cpu', 'memory', 'temp'], ['CPU usage', 'Memory usage', 'CPU temperature']));
@@ -113,17 +114,6 @@ export default class OpsDeckPreferences extends ExtensionPreferences {
         const row = new Adw.ComboRow({title, model: Gtk.StringList.new(labels)});
         row.selected = Math.max(0, values.indexOf(settings.get_string(key)));
         row.connect('notify::selected', () => settings.set_string(key, values[row.selected]));
-        return row;
-    }
-
-    _claudeWindowRow(settings) {
-        const values = ['max', '5h', '7d'];
-        const row = new Adw.ComboRow({
-            title: 'Top bar shows',
-            model: Gtk.StringList.new(['Closest to limit', 'Session (5h)', 'Weekly (7d)']),
-        });
-        row.selected = Math.max(0, values.indexOf(settings.get_string('claude-panel-window')));
-        row.connect('notify::selected', () => settings.set_string('claude-panel-window', values[row.selected]));
         return row;
     }
 }

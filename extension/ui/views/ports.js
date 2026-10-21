@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import Gio from 'gi://Gio';
-
 import {hostPortIndex} from '../../sources/docker.js';
 import {describePort, matchesPort, visiblePorts} from '../../sources/ports.js';
 import {matchesQuery} from '../../lib/format.js';
-import {button, chip, copyToClipboard, emptyState, hbox, label, vbox} from '../widgets.js';
+import {chip, copyButton, hbox, label, vbox} from '../widgets.js';
 import {SourceView} from './base.js';
 
 const MAX_ROWS = 60;
@@ -13,12 +11,7 @@ const MAX_ROWS = 60;
 export class PortsView extends SourceView {
     constructor(ctx) {
         super(ctx, 'ports', {searchHint: 'Filter by port, process, PID or container'});
-        this.addToolbarButton(button({
-            iconName: 'edit-copy-symbolic',
-            styleClass: 'opsdeck-button opsdeck-button-icon-only',
-            accessibleName: 'Copy visible ports',
-            onClick: () => copyToClipboard(this._visible.map(describePort).join('\n')),
-        }));
+        this.addToolbarButton(copyButton(() => this._visible.map(describePort).join('\n'), 'Copy visible ports'));
         this._visible = [];
     }
 
@@ -34,18 +27,11 @@ export class PortsView extends SourceView {
         if (hidden)
             list.add_child(label(`${hidden} hidden by range/UDP settings`, 'opsdeck-note'));
 
-        if (!this._visible.length) {
-            list.add_child(emptyState({
-                iconName: 'network-wired-disconnected-symbolic',
-                title: this.query ? `Nothing matches “${this.query.trim()}”` : 'No listening ports',
-            }));
-            return;
-        }
-
-        for (const e of this._visible.slice(0, MAX_ROWS))
-            list.add_child(this._row(e));
-        if (this._visible.length > MAX_ROWS)
-            list.add_child(label(`… ${this._visible.length - MAX_ROWS} more, refine the filter`, 'opsdeck-note'));
+        this.renderFiltered(list, this._visible, e => this._row(e), {
+            maxRows: MAX_ROWS,
+            emptyIcon: 'network-wired-disconnected-symbolic',
+            emptyTitle: 'No listening ports',
+        });
     }
 
     _row(e) {
@@ -79,26 +65,17 @@ export class PortsView extends SourceView {
         row.add_child(info);
 
         const actions = hbox({style_class: 'opsdeck-row-actions'});
-        if (e.proto === 'tcp') {
-            actions.add_child(button({
-                iconName: 'web-browser-symbolic',
-                styleClass: 'opsdeck-button opsdeck-button-icon-only',
-                accessibleName: `Open localhost:${e.port} in browser`,
-                onClick: () => {
-                    this.ctx.closeMenu();
-                    Gio.AppInfo.launch_default_for_uri_async(`http://localhost:${e.port}`, null, null, null);
-                },
+        if (e.proto === 'tcp')
+            actions.add_child(this.openUrlButton(`http://localhost:${e.port}`, `Open localhost:${e.port} in browser`));
+        actions.add_child(copyButton(() => describePort(e), `Copy port ${e.port} details`));
+        // Only a single owned process can be killed unambiguously.
+        if (e.processes.length === 1 && proc.own) {
+            actions.add_child(this.actionButton({
+                key: `ports:kill:${proc.pid}`, iconName: 'process-stop-symbolic', confirmText: 'Kill?',
+                variant: 'danger', accessibleName: `Kill ${proc.name} (PID ${proc.pid})`,
+                run: () => this.ctx.hub.sources.ports.kill(proc),
             }));
         }
-        actions.add_child(button({
-            iconName: 'edit-copy-symbolic',
-            styleClass: 'opsdeck-button opsdeck-button-icon-only',
-            accessibleName: `Copy port ${e.port} details`,
-            onClick: () => copyToClipboard(describePort(e)),
-        }));
-        // Only a single owned process can be killed unambiguously.
-        if (e.processes.length === 1 && proc.own)
-            actions.add_child(this._killButton(proc));
         row.add_child(actions);
         return row;
     }
@@ -110,22 +87,5 @@ export class PortsView extends SourceView {
             return null;
         const proc = e.processes[0];
         return !proc || proc.name === 'docker-proxy' ? c : null;
-    }
-
-    _killButton(proc) {
-        const key = `ports:kill:${proc.pid}`;
-        const busy = this.ctx.isBusy(key);
-        const armed = this.ctx.confirm.isArmed(key);
-        return button({
-            label: busy ? '…' : armed ? 'Kill?' : undefined,
-            iconName: busy || armed ? undefined : 'process-stop-symbolic',
-            styleClass: `opsdeck-button opsdeck-button-danger ${armed ? 'opsdeck-armed' : 'opsdeck-button-icon-only'}`,
-            accessibleName: armed ? `Confirm killing ${proc.name} (PID ${proc.pid})` : `Kill ${proc.name} (PID ${proc.pid})`,
-            sensitive: !busy,
-            onClick: () => {
-                if (this.ctx.confirm.confirm(key))
-                    this.ctx.runAction('ports', key, () => this.ctx.hub.sources.ports.kill(proc));
-            },
-        });
     }
 }

@@ -3,11 +3,9 @@
 // Docker containers via the docker CLI (works with rootless and remote
 // contexts too, since we inherit the user's docker config).
 
-import GLib from 'gi://GLib';
-
 import {CancelledError} from '../lib/scope.js';
 import {SourceError, actionResult} from '../lib/source.js';
-import {run, spawnDetached, which} from '../lib/subprocess.js';
+import {launchInTerminal, run, which} from '../lib/subprocess.js';
 import {matchesQuery} from '../lib/format.js';
 
 const ID_RE = /^[0-9a-f]{12,64}$/;
@@ -166,29 +164,6 @@ export function matchesContainer(c, query) {
     return matchesQuery(query, c.name, c.image, c.project, c.id, ...c.ports);
 }
 
-// Terminal emulators, most preferred first. `cmd` is the argv to run inside.
-const TERMINALS = [
-    ['xdg-terminal-exec', cmd => cmd],
-    ['ptyxis', cmd => ['--new-window', '-x', cmd.map(a => GLib.shell_quote(a)).join(' ')]],
-    ['kgx', cmd => ['--', ...cmd]],
-    ['gnome-terminal', cmd => ['--', ...cmd]],
-    ['kitty', cmd => ['--', ...cmd]],
-    ['alacritty', cmd => ['-e', ...cmd]],
-    ['wezterm', cmd => ['start', '--', ...cmd]],
-    ['foot', cmd => cmd],
-    ['konsole', cmd => ['-e', ...cmd]],
-    ['xterm', cmd => ['-e', ...cmd]],
-];
-
-function openInTerminal(cmd, okMessage) {
-    for (const [bin, build] of TERMINALS) {
-        const path = which(bin);
-        if (path && spawnDetached([path, ...build(cmd)]))
-            return actionResult(true, okMessage);
-    }
-    return actionResult(false, 'No terminal emulator found');
-}
-
 export class DockerSource {
     id = 'docker';
 
@@ -240,10 +215,15 @@ export class DockerSource {
         return containers.filter(c => c.running).length;
     }
 
+    /** The docker binary, if `container` is a well-formed target. */
+    _docker(container) {
+        return ID_RE.test(container?.id ?? '') ? which('docker') : null;
+    }
+
     /** @param {'start'|'stop'|'restart'} verb */
     async act(verb, container) {
-        const docker = which('docker');
-        if (!docker || !ID_RE.test(container.id) || !['start', 'stop', 'restart'].includes(verb))
+        const docker = this._docker(container);
+        if (!docker || !['start', 'stop', 'restart'].includes(verb))
             return actionResult(false, 'Invalid docker action');
         const argv = [docker, verb];
         if (verb !== 'start')
@@ -257,21 +237,20 @@ export class DockerSource {
 
     /** Open an interactive shell in the container in a terminal window. */
     openShell(container) {
-        const docker = which('docker');
-        if (!docker || !ID_RE.test(container.id))
-            return actionResult(false, 'Invalid container');
-        return openInTerminal([docker, 'exec', '-it', container.id, 'sh', '-c',
-            'if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi'],
-        `Opened shell in ${container.name}`);
+        return this._inTerminal(container, docker => [docker, 'exec', '-it', container.id, 'sh', '-c',
+            'if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi']);
     }
 
     /** Follow the container's logs in a terminal window. */
     openLogs(container) {
-        const docker = which('docker');
-        if (!docker || !ID_RE.test(container.id))
+        return this._inTerminal(container, docker => [docker, 'logs', '--follow', '--tail', '200', container.id]);
+    }
+
+    async _inTerminal(container, argvFor) {
+        const docker = this._docker(container);
+        if (!docker)
             return actionResult(false, 'Invalid container');
-        return openInTerminal([docker, 'logs', '--follow', '--tail', '200', container.id],
-            `Showing logs of ${container.name}`);
+        return launchInTerminal(argvFor(docker), this._scope);
     }
 
     destroy() {}

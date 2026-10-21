@@ -91,17 +91,68 @@ export async function run(argv, {cancellable = null, timeoutMs = 5000} = {}) {
     return result;
 }
 
-/** Spawn a long-lived process (e.g. a terminal) without capturing output. */
-export function spawnDetached(argv) {
-    try {
-        const proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.NONE);
-        // Reap the child when it exits so it never lingers as a zombie.
-        proc.wait_async(null).catch(() => {});
-        return true;
-    } catch (e) {
-        console.warn(`[OpsDeck] failed to spawn ${argv[0]}: ${e.message}`);
-        return false;
+// Terminal emulators, most preferred first. Each maps the command argv to
+// the terminal's own argv. xdg-terminal-exec honours the user's choice.
+const TERMINALS = [
+    ['xdg-terminal-exec', cmd => cmd],
+    ['ptyxis', cmd => ['--new-window', '-x', cmd.map(a => GLib.shell_quote(a)).join(' ')]],
+    ['kgx', cmd => ['--', ...cmd]],
+    ['gnome-terminal', cmd => ['--', ...cmd]],
+    ['kitty', cmd => ['--', ...cmd]],
+    ['alacritty', cmd => ['-e', ...cmd]],
+    ['wezterm', cmd => ['start', '--', ...cmd]],
+    ['foot', cmd => cmd],
+    ['konsole', cmd => ['-e', ...cmd]],
+    ['xterm', cmd => ['-e', ...cmd]],
+];
+// A launcher that can't open anything (e.g. xdg-terminal-exec with no
+// terminal configured) exits non-zero almost at once.
+const EARLY_FAILURE_MS = 1500;
+
+/**
+ * Run `cmd` in a new terminal window, falling back through TERMINALS when a
+ * launcher fails straight away.
+ *
+ * @param {string[]} cmd
+ * @param {import('./scope.js').Scope} scope
+ * @returns {Promise<{ok: boolean, message: string}>}
+ */
+export async function launchInTerminal(cmd, scope) {
+    for (const [bin, build] of TERMINALS) {
+        const path = which(bin);
+        if (!path)
+            continue;
+        let proc;
+        try {
+            proc = Gio.Subprocess.new([path, ...build(cmd)], Gio.SubprocessFlags.NONE);
+        } catch (e) {
+            console.warn(`[OpsDeck] ${bin} failed to start: ${e.message}`);
+            continue;
+        }
+        // Reap the child whenever it exits so it never lingers as a zombie.
+        const exited = proc.wait_async(null).then(() => true, () => true);
+        const quickExit = await Promise.race([exited, scope.sleep(EARLY_FAILURE_MS).then(() => false)]);
+        // Still running: a terminal is open. Exited 0: it handed off to a
+        // terminal server (gnome-terminal, ptyxis). Exited non-zero: next.
+        if (!quickExit || proc.get_successful())
+            return {ok: true, message: `Opened in ${bin}`};
+        console.warn(`[OpsDeck] ${bin} exited with status ${proc.get_exit_status()}; trying the next terminal`);
     }
+    return {ok: false, message: 'No working terminal emulator found'};
+}
+
+/** Open a URI with the user's default handler, reporting failure. */
+export function openUri(uri) {
+    return new Promise(resolve => {
+        Gio.AppInfo.launch_default_for_uri_async(uri, null, null, (_src, res) => {
+            try {
+                Gio.AppInfo.launch_default_for_uri_finish(res);
+                resolve({ok: true, message: `Opened ${uri}`});
+            } catch (e) {
+                resolve({ok: false, message: `Could not open ${uri}: ${e.message}`});
+            }
+        });
+    });
 }
 
 /** Read a small text file asynchronously. Resolves null if it can't be read. */

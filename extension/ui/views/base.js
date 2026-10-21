@@ -6,7 +6,8 @@
 
 import St from 'gi://St';
 
-import {banner, emptyState, hbox, vbox} from '../widgets.js';
+import {banner, button, emptyState, hbox, label, vbox} from '../widgets.js';
+import {openUri} from '../../lib/subprocess.js';
 
 const ERROR_ICONS = {
     'missing': 'dialog-question-symbolic',
@@ -112,6 +113,71 @@ export class SourceView {
     /** Subclasses fill `list` from `data`. */
     build(_list, _data) {
         throw new Error('not implemented');
+    }
+
+    /**
+     * A button that runs one of this source's actions, with a busy state and,
+     * when `confirmText` is given, a two-click confirmation.
+     *
+     * @param {object} o
+     * @param {string} o.key - unique per entity and verb, e.g. "docker:stop:<id>"
+     * @param {string} [o.text] - label; omit for an icon-only button
+     * @param {string} [o.iconName] - icon for the idle, icon-only state
+     * @param {string} [o.confirmText] - armed label; makes the action destructive
+     * @param {string} [o.busyText]
+     * @param {string} o.accessibleName
+     * @param {'danger'|'suggested'} [o.variant]
+     * @param {boolean} [o.closesMenu] - e.g. for actions that open a window
+     * @param {boolean} [o.refresh] - refresh the source afterwards (default true)
+     * @param {() => any} o.run - returns (a promise of) an actionResult
+     */
+    actionButton({key, text, iconName, confirmText, busyText = '…', accessibleName, variant,
+        closesMenu = false, refresh = true, run}) {
+        const busy = this.ctx.isBusy(key);
+        const armed = Boolean(confirmText) && this.ctx.confirm.isArmed(key);
+        const shown = busy ? busyText : armed ? confirmText : text;
+        return button({
+            label: shown,
+            iconName: shown ? undefined : iconName,
+            styleClass: ['opsdeck-button', variant && `opsdeck-button-${variant}`,
+                armed && 'opsdeck-armed', !shown && 'opsdeck-button-icon-only'].filter(Boolean).join(' '),
+            accessibleName: armed ? `Confirm: ${accessibleName}` : accessibleName,
+            sensitive: !busy,
+            onClick: () => {
+                if (confirmText && !this.ctx.confirm.confirm(key))
+                    return;
+                if (closesMenu)
+                    this.ctx.closeMenu();
+                this.ctx.runAction(this.id, key, async () => run(), {refresh});
+            },
+        });
+    }
+
+    openUrlButton(url, accessibleName) {
+        return this.actionButton({
+            key: `open:${url}`, iconName: 'web-browser-symbolic', accessibleName,
+            closesMenu: true, refresh: false, run: () => openUri(url),
+        });
+    }
+
+    /**
+     * Rows for `items`, capped at `maxRows`, or an empty state that says
+     * whether the search or the data is the reason.
+     */
+    renderFiltered(list, items, rowFn, {maxRows, emptyIcon, emptyTitle, emptyHint = ''}) {
+        if (!items.length) {
+            const q = this.query.trim();
+            list.add_child(emptyState({
+                iconName: emptyIcon,
+                title: q ? `Nothing matches “${q}”` : emptyTitle,
+                hint: q ? '' : emptyHint,
+            }));
+            return;
+        }
+        for (const item of items.slice(0, maxRows))
+            list.add_child(rowFn(item));
+        if (items.length > maxRows)
+            list.add_child(label(`… ${items.length - maxRows} more, refine the filter`, 'opsdeck-note'));
     }
 
     /** Section heading inside a list. */

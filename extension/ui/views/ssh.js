@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import Gio from 'gi://Gio';
-
 import {matchesSession} from '../../sources/ssh.js';
-import {button, chip, copyToClipboard, emptyState, hbox, label, vbox} from '../widgets.js';
+import {chip, copyButton, emptyState, hbox, label, vbox} from '../widgets.js';
 import {SourceView} from './base.js';
 
 const FORWARD_KIND = {L: ['LOCAL', 'in'], R: ['REMOTE', 'out'], D: ['SOCKS', 'muted']};
@@ -78,23 +76,9 @@ export class SshView extends SourceView {
 
         const actions = hbox({style_class: 'opsdeck-row-actions'});
         const localPort = f.type === 'L' ? f.listen.match(/(\d+)$/)?.[1] : null;
-        if (localPort) {
-            actions.add_child(button({
-                iconName: 'web-browser-symbolic',
-                styleClass: 'opsdeck-button opsdeck-button-icon-only',
-                accessibleName: `Open localhost:${localPort} in browser`,
-                onClick: () => {
-                    this.ctx.closeMenu();
-                    Gio.AppInfo.launch_default_for_uri_async(`http://localhost:${localPort}`, null, null, null);
-                },
-            }));
-        }
-        actions.add_child(button({
-            iconName: 'edit-copy-symbolic',
-            styleClass: 'opsdeck-button opsdeck-button-icon-only',
-            accessibleName: 'Copy tunnel details',
-            onClick: () => copyToClipboard(describeForward(f, session.target)),
-        }));
+        if (localPort)
+            actions.add_child(this.openUrlButton(`http://localhost:${localPort}`, `Open localhost:${localPort} in browser`));
+        actions.add_child(copyButton(() => describeForward(f, session.target), 'Copy tunnel details'));
         row.add_child(actions);
         // A tunnel lives as long as its ssh client, so "End" ends that session.
         row.add_child(this._endButton(session, `${session.target} (closes its tunnels)`));
@@ -115,18 +99,11 @@ export class SshView extends SourceView {
     _endButton(session, title) {
         if (!session.own)
             return label('other user', 'opsdeck-meta');
-        const key = `ssh:end:${session.direction === 'in' ? `in:${session.tty}` : `out:${session.pid}`}`;
-        const busy = this.ctx.isBusy(key);
-        const armed = this.ctx.confirm.isArmed(key);
-        return button({
-            label: busy ? 'Ending…' : armed ? 'End?' : 'End',
-            styleClass: `opsdeck-button opsdeck-button-danger ${armed ? 'opsdeck-armed' : ''}`,
+        return this.actionButton({
+            key: `ssh:end:${session.direction === 'in' ? `in:${session.tty}` : `out:${session.pid}`}`,
+            text: 'End', confirmText: 'End?', busyText: 'Ending…', variant: 'danger',
             accessibleName: `End SSH session ${title}`,
-            sensitive: !busy,
-            onClick: () => {
-                if (this.ctx.confirm.confirm(key))
-                    this.ctx.runAction('ssh', key, () => this.ctx.hub.sources.ssh.terminate(session));
-            },
+            run: () => this.ctx.hub.sources.ssh.terminate(session),
         });
     }
 }

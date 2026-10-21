@@ -8,6 +8,11 @@ all: test pack
 
 test:
 	gjs -m tests/run.js
+	@# Terminal fallback, against fake launchers on a sandboxed PATH.
+	@set -e; d=$$(mktemp -d); trap 'rm -rf "$$d"' EXIT; \
+	printf '#!/bin/sh\necho "xdg-terminal-exec $$*" >> "%s/log"\nexit 1\n' "$$d" > "$$d/xdg-terminal-exec"; \
+	printf '#!/bin/sh\necho "ptyxis $$*" >> "%s/log"\nexit 0\n' "$$d" > "$$d/ptyxis"; \
+	chmod +x "$$d"/*; OPSDECK_LAUNCH_LOG="$$d/log" PATH="$$d" "$$(command -v gjs)" -m tests/launcher.js
 	glib-compile-schemas --strict --dry-run extension/schemas
 
 pack: $(ZIP)

@@ -45,13 +45,17 @@ export class Deck {
         this._busy = new Set();
         this._tickId = 0;
 
-        this._confirm = new ConfirmTracker(scope, settings, () => this._renderActive());
+        this._renderId = 0;
+        // Arming a confirm happens inside a button's click handler; re-render
+        // on the next main-loop turn so the clicked button isn't destroyed
+        // while its own handler is still running.
+        this._confirm = new ConfirmTracker(scope, settings, () => this._renderSoon());
         const ctx = {
             hub,
             settings,
             confirm: this._confirm,
             isBusy: key => this._busy.has(key),
-            runAction: (id, key, fn) => this._runAction(id, key, fn),
+            runAction: (id, key, fn, opts) => this._runAction(id, key, fn, opts),
             openPreferences,
             closeMenu,
             icon,
@@ -196,6 +200,15 @@ export class Deck {
             this._renderActive();
     }
 
+    _renderSoon() {
+        if (!this._renderId) {
+            this._renderId = this._scope.timeout(0, () => {
+                this._renderId = 0;
+                this._renderActive();
+            });
+        }
+    }
+
     _renderActive() {
         if (!this._open || !this._active)
             return;
@@ -243,11 +256,17 @@ export class Deck {
             this._show(tab);
     }
 
-    async _runAction(id, key, fn) {
+    /**
+     * @param {string} id - source to refresh afterwards
+     * @param {string} key - busy-state key
+     * @param {() => Promise<{ok: boolean, message: string}>} fn
+     * @param {{refresh?: boolean}} [opts]
+     */
+    async _runAction(id, key, fn, {refresh = true} = {}) {
         if (this._busy.has(key))
             return;
         this._busy.add(key);
-        this._renderActive();
+        this._renderSoon();
         try {
             const result = await fn();
             if (!result.ok)
@@ -260,7 +279,10 @@ export class Deck {
         } finally {
             if (!this._scope.disposed) {
                 this._busy.delete(key);
-                this._hub.refresh(id, {force: true});
+                if (refresh)
+                    this._hub.refresh(id, {force: true});
+                else
+                    this._renderSoon();
             }
         }
     }
@@ -269,6 +291,7 @@ export class Deck {
         for (const hid of this._hubIds)
             this._hub.disconnect(hid);
         this._tickId = this._scope.clear(this._tickId);
+        this._renderId = this._scope.clear(this._renderId);
         this._confirm.clear();
         this.actor.destroy();
     }

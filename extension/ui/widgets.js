@@ -115,6 +115,16 @@ export function copyToClipboard(text) {
     St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
 }
 
+/** Icon button copying `getText()` (evaluated on click) to the clipboard. */
+export function copyButton(getText, accessibleName) {
+    return button({
+        iconName: 'edit-copy-symbolic',
+        styleClass: 'opsdeck-button opsdeck-button-icon-only',
+        accessibleName,
+        onClick: () => copyToClipboard(getText()),
+    });
+}
+
 /**
  * Small history chart. Each series is drawn in its widget's CSS `color`
  * (so it follows the theme); `fill` shades the area under the first series.

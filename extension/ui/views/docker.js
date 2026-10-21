@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import {matchesContainer} from '../../sources/docker.js';
-import {button, copyToClipboard, emptyState, hbox, label, vbox} from '../widgets.js';
+import {copyButton, hbox, label, vbox} from '../widgets.js';
 import {SourceView} from './base.js';
 
 const MAX_ROWS = 40;
@@ -21,21 +21,13 @@ export class DockerView extends SourceView {
             .filter(c => showStopped || c.running)
             .filter(c => matchesContainer(c, this.query));
 
-        if (!shown.length) {
-            const hiddenStopped = !showStopped && containers.length > 0;
-            list.add_child(emptyState({
-                iconName: 'package-x-generic-symbolic',
-                title: this.query ? `Nothing matches “${this.query.trim()}”`
-                    : hiddenStopped ? 'No running containers' : 'No containers',
-                hint: hiddenStopped && !this.query ? `${containers.length} stopped (hidden in Settings)` : '',
-            }));
-            return;
-        }
-
-        for (const c of shown.slice(0, MAX_ROWS))
-            list.add_child(this._row(c));
-        if (shown.length > MAX_ROWS)
-            list.add_child(label(`… ${shown.length - MAX_ROWS} more, refine the filter`, 'opsdeck-note'));
+        const hiddenStopped = !showStopped && containers.length > 0;
+        this.renderFiltered(list, shown, c => this._row(c), {
+            maxRows: MAX_ROWS,
+            emptyIcon: 'package-x-generic-symbolic',
+            emptyTitle: hiddenStopped ? 'No running containers' : 'No containers',
+            emptyHint: hiddenStopped ? `${containers.length} stopped (hidden in Settings)` : '',
+        });
     }
 
     _row(c) {
@@ -57,53 +49,27 @@ export class DockerView extends SourceView {
         row.add_child(top);
 
         const actions = hbox({style_class: 'opsdeck-row-actions opsdeck-row-actions-below'});
+        const docker = this.ctx.hub.sources.docker;
+        const verb = (v, text, destructive) => this.actionButton({
+            key: `docker:${v}:${c.id}`, text, busyText: `${text}…`,
+            confirmText: destructive ? `${text}?` : undefined,
+            variant: destructive ? 'danger' : 'suggested',
+            accessibleName: `${text} ${c.name}`,
+            run: () => docker.act(v, c),
+        });
+        const window = (v, text, accessibleName, open) => this.actionButton({
+            key: `docker:${v}:${c.id}`, text, accessibleName, closesMenu: true, refresh: false, run: open,
+        });
         if (c.running) {
-            actions.add_child(this._verbButton(c, 'stop', 'Stop', true));
-            actions.add_child(this._verbButton(c, 'restart', 'Restart', true));
-            actions.add_child(button({
-                label: 'Shell',
-                accessibleName: `Open a shell in ${c.name}`,
-                onClick: () => {
-                    this.ctx.closeMenu();
-                    this.ctx.runAction('docker', `docker:shell:${c.id}`,
-                        async () => this.ctx.hub.sources.docker.openShell(c));
-                },
-            }));
+            actions.add_child(verb('stop', 'Stop', true));
+            actions.add_child(verb('restart', 'Restart', true));
+            actions.add_child(window('shell', 'Shell', `Open a shell in ${c.name}`, () => docker.openShell(c)));
         } else {
-            actions.add_child(this._verbButton(c, 'start', 'Start', false));
+            actions.add_child(verb('start', 'Start', false));
         }
-        actions.add_child(button({
-            label: 'Logs',
-            accessibleName: `Follow logs of ${c.name}`,
-            onClick: () => {
-                this.ctx.closeMenu();
-                this.ctx.runAction('docker', `docker:logs:${c.id}`,
-                    async () => this.ctx.hub.sources.docker.openLogs(c));
-            },
-        }));
-        actions.add_child(button({
-            iconName: 'edit-copy-symbolic',
-            styleClass: 'opsdeck-button opsdeck-button-icon-only',
-            accessibleName: `Copy ID of ${c.name}`,
-            onClick: () => copyToClipboard(c.id),
-        }));
+        actions.add_child(window('logs', 'Logs', `Follow logs of ${c.name}`, () => docker.openLogs(c)));
+        actions.add_child(copyButton(() => c.id, `Copy ID of ${c.name}`));
         row.add_child(actions);
         return row;
-    }
-
-    _verbButton(c, verb, text, destructive) {
-        const key = `docker:${verb}:${c.id}`;
-        const busy = this.ctx.isBusy(key);
-        const armed = destructive && this.ctx.confirm.isArmed(key);
-        return button({
-            label: busy ? `${text}…` : armed ? `${text}?` : text,
-            styleClass: `opsdeck-button ${destructive ? 'opsdeck-button-danger' : 'opsdeck-button-suggested'} ${armed ? 'opsdeck-armed' : ''}`,
-            accessibleName: `${text} ${c.name}`,
-            sensitive: !busy,
-            onClick: () => {
-                if (!destructive || this.ctx.confirm.confirm(key))
-                    this.ctx.runAction('docker', key, () => this.ctx.hub.sources.docker.act(verb, c));
-            },
-        });
     }
 }
