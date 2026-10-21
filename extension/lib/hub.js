@@ -32,6 +32,11 @@ export class Hub extends Emitter {
         this._settings = settings;
         this._scope = scope;
         this.sources = sources;
+        // Sources may produce extra data in the background (e.g. docker stats).
+        for (const [id, source] of Object.entries(sources)) {
+            if ('onUpdate' in source)
+                source.onUpdate = () => !this._scope.disposed && this.emit('changed', id);
+        }
         this._timers = {};
         this._generation = {};
         this._inflight = {};

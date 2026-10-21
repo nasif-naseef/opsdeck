@@ -4,8 +4,10 @@ A GNOME Shell (48–50) top-bar menu for your dev machine:
 
 - **Claude**: plan usage (5-hour and weekly limits) for the account Claude Code is signed in with. The token is read **read-only** and is never refreshed or written.
 - **Ports**: listening TCP sockets (UDP is optional) with process and PID. Actions: kill (TERM, then KILL), copy, and open in the browser.
-- **SSH**: incoming logins (`who`) and outgoing `ssh` clients (`ss` plus `/proc`). You can end your own sessions.
-- **Docker**: containers via the CLI, with compose project and published ports. Actions: start, stop, restart, and a shell in your terminal.
+- **SSH**: incoming logins (`who`) and outgoing `ssh` clients (`ss` plus `/proc`). You can end your own sessions. A **Tunnels** section lists the port forwards your ssh clients hold open (`-L`, `-R`, `-D` and `-o …Forward`), with open-in-browser and copy.
+- **Docker**: containers via the CLI, with compose project and published ports. Running containers show CPU and memory, sampled only while the Docker tab is open. Actions: start, stop, restart, a shell in your terminal, and follow the logs.
+
+In the Ports tab, ports published by Docker show the container that owns them, and ports held by an `ssh` client are tagged as tunnels.
 
 Destructive actions need a second click to confirm. Each module can be toggled, has its own refresh interval and its own top-bar counter.
 

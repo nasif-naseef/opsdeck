@@ -48,7 +48,12 @@ export class DockerView extends SourceView {
         const image = c.image.split('/').pop();
         info.add_child(label([c.project, image, ...c.ports].filter(Boolean).join(' · '), 'opsdeck-meta'));
         top.add_child(info);
-        top.add_child(label(c.status, `opsdeck-status opsdeck-state-${c.state}`));
+        const side = vbox({style_class: 'opsdeck-row-side'});
+        side.add_child(label(c.status, `opsdeck-status opsdeck-state-${c.state}`));
+        const stats = c.running ? this.ctx.hub.sources.docker.stats.get(c.id) : null;
+        if (stats)
+            side.add_child(label(`CPU ${stats.cpu} · ${stats.mem}`, 'opsdeck-meta opsdeck-stats'));
+        top.add_child(side);
         row.add_child(top);
 
         const actions = hbox({style_class: 'opsdeck-row-actions opsdeck-row-actions-below'});
@@ -67,6 +72,15 @@ export class DockerView extends SourceView {
         } else {
             actions.add_child(this._verbButton(c, 'start', 'Start', false));
         }
+        actions.add_child(button({
+            label: 'Logs',
+            accessibleName: `Follow logs of ${c.name}`,
+            onClick: () => {
+                this.ctx.closeMenu();
+                this.ctx.runAction('docker', `docker:logs:${c.id}`,
+                    async () => this.ctx.hub.sources.docker.openLogs(c));
+            },
+        }));
         actions.add_child(button({
             iconName: 'edit-copy-symbolic',
             styleClass: 'opsdeck-button opsdeck-button-icon-only',

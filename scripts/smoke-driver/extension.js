@@ -77,9 +77,24 @@ export default class SmokeDriver extends Extension {
             ]}});
         hub.emit('changed', 'claude');
 
+        // Same for SSH: a made-up outgoing session holding three tunnels.
+        const fakeSsh = {error: null, updatedAt: Date.now(), data: {incoming: [], outgoing: [{
+            direction: 'out', pid: 424242, host: '203.0.113.7', port: 22, target: 'deploy@bastion', own: true,
+            forwards: [
+                {type: 'L', listen: '5433', to: 'db.internal:5432'},
+                {type: 'L', listen: '8080', to: 'grafana:3000'},
+                {type: 'D', listen: '1080', to: null},
+            ]}]}};
+
         for (const tab of ['claude', 'ports', 'ssh', 'docker']) {
+            if (tab === 'ssh') {
+                // re-apply right before the shot so a real poll can't replace it
+                Object.assign(hub.state.ssh, fakeSsh);
+                hub.emit('changed', 'ssh');
+            }
             indicator()._deck.select(tab);
-            await sleep(1500);
+            // docker stats sample for a few seconds before they appear
+            await sleep(tab === 'docker' ? 9000 : 1500);
             await screenshot(tab);
             console.log(`SMOKE tab ${tab} ok`);
         }

@@ -31,6 +31,7 @@ const SSH_OPTS_WITH_ARG = new Set('BbcDEeFIiJLlmOoPpQRSWw');
  * @property {string} target - "user@host" as typed, or the peer address
  * @property {string} host - peer address
  * @property {number} port - peer port
+ * @property {Forward[]} forwards - port forwards this client holds open
  * @property {boolean} own
  */
 
@@ -79,7 +80,7 @@ export function parseEstablished(raw) {
             continue;
         seen.add(ssh.pid);
         out.push({direction: 'out', pid: ssh.pid, host: peer.host, port: peer.port,
-            target: peer.host, own: false});
+            target: peer.host, forwards: [], own: false});
     }
     return out;
 }
@@ -90,24 +91,117 @@ export function parseEstablished(raw) {
  * @param {string[]} argv
  * @returns {string|null} e.g. "deploy@web-1" or "ssh://host:2222"
  */
-export function parseSshTarget(argv) {
+/**
+ * @typedef {object} Forward
+ * @property {'L'|'R'|'D'} type - local, remote or dynamic (SOCKS)
+ * @property {string} listen - "8080" or "127.0.0.1:8080" (bind address kept when given)
+ * @property {string|null} to - "db:5432" for L/R, null for D
+ */
+
+/**
+ * Parse an ssh client's argv (from /proc/PID/cmdline): destination and
+ * port forwards from -L/-R/-D and -o Local/Remote/DynamicForward.
+ *
+ * @param {string[]} argv
+ * @returns {{target: string|null, forwards: Forward[]}}
+ */
+export function parseSshArgs(argv) {
     let login = null;
+    let target = null;
+    const forwards = [];
+    const option = (flag, value) => {
+        if (flag === 'l')
+            login = value;
+        else if (flag === 'L' || flag === 'R' || flag === 'D')
+            pushForward(forwards, flag, value);
+        else if (flag === 'o')
+            parseForwardOption(forwards, value);
+    };
+    // OpenSSH keeps parsing options after the destination; the first
+    // non-option after it starts the remote command.
     for (let i = 1; i < argv.length; i++) {
         const arg = argv[i];
-        if (arg === '--')
-            return argv[i + 1] ? withLogin(argv[i + 1], login) : null;
-        if (!arg.startsWith('-') || arg === '-')
-            return withLogin(arg, login);
+        if (arg === '--') {
+            target ??= argv[i + 1] ?? null;
+            break;
+        }
+        if (!arg.startsWith('-') || arg === '-') {
+            if (target !== null)
+                break;
+            target = arg;
+            continue;
+        }
         for (let j = 1; j < arg.length; j++) {
             if (!SSH_OPTS_WITH_ARG.has(arg[j]))
                 continue;
             const value = j + 1 < arg.length ? arg.slice(j + 1) : argv[++i];
-            if (arg[j] === 'l')
-                login = value;
+            if (value !== undefined)
+                option(arg[j], value);
             break;
         }
     }
-    return null;
+    return {target: target === null ? null : withLogin(target, login), forwards};
+}
+
+/** Back-compat helper: just the destination. */
+export function parseSshTarget(argv) {
+    return parseSshArgs(argv).target;
+}
+
+/** Split on ':' but keep "[v6:addr]" together, stripping the brackets. */
+function splitSpec(spec) {
+    const parts = [];
+    let cur = '';
+    let depth = 0;
+    for (const ch of spec) {
+        if (ch === '[')
+            depth++;
+        else if (ch === ']')
+            depth--;
+        else if (ch === ':' && depth === 0) {
+            parts.push(cur);
+            cur = '';
+            continue;
+        }
+        if (ch !== '[' && ch !== ']')
+            cur += ch;
+    }
+    parts.push(cur);
+    return parts;
+}
+
+const bracket = host => (host.includes(':') ? `[${host}]` : host);
+
+/** ["::1", "6000"] → "[::1]:6000", ["6000"] → "6000" */
+function joinListen(parts) {
+    return parts.length === 2 ? `${bracket(parts[0])}:${parts[1]}` : parts.join(':');
+}
+
+function pushForward(forwards, type, spec) {
+    const p = splitSpec(spec.trim());
+    if (type === 'D') {
+        // [bind:]port
+        forwards.push({type, listen: joinListen(p), to: null});
+    } else if (p.length >= 3) {
+        // [bind:]port:host:hostport
+        const n = p.length;
+        forwards.push({type, listen: joinListen(p.slice(0, n - 2)), to: `${bracket(p[n - 2])}:${p[n - 1]}`});
+    } else if (p.length === 2) {
+        // port:/unix/socket
+        forwards.push({type, listen: p[0], to: p[1]});
+    } else if (type === 'R' && p.length === 1) {
+        // -R port: remote dynamic forward
+        forwards.push({type, listen: p[0], to: null});
+    }
+}
+
+/** -o "LocalForward 8080 db:5432", "-o LocalForward=8080 db:5432", DynamicForward 1080 */
+function parseForwardOption(forwards, value) {
+    const m = value.match(/^\s*(Local|Remote|Dynamic)Forward\s*[=\s]\s*(\S+)(?:\s+(\S+))?/i);
+    if (!m)
+        return;
+    const type = m[1][0].toUpperCase();
+    pushForward(forwards, type, m[3] ? `${m[2]}:${m[3]}` : m[2]);
 }
 
 function withLogin(dest, login) {
@@ -117,7 +211,8 @@ function withLogin(dest, login) {
 export function matchesSession(s, query) {
     return s.direction === 'in'
         ? matchesQuery(query, s.user, s.from, s.tty)
-        : matchesQuery(query, s.target, s.host, s.pid);
+        : matchesQuery(query, s.target, s.host, s.pid,
+            ...s.forwards.flatMap(f => [f.listen, f.to]));
 }
 
 export class SshSource {
@@ -152,9 +247,12 @@ export class SshSource {
                 processUid(session.pid, this._scope.cancellable),
             ]);
             session.own = uid === MY_UID;
-            const target = cmdline ? parseSshTarget(cmdline.split('\0').filter(Boolean)) : null;
+            const {target, forwards} = cmdline
+                ? parseSshArgs(cmdline.split('\0').filter(Boolean))
+                : {target: null, forwards: []};
             if (target)
                 session.target = target;
+            session.forwards = forwards;
         }));
         return {incoming, outgoing};
     }

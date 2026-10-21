@@ -284,6 +284,14 @@
   font-size: 0.85em;
 }
 
+.opsdeck-row-side > StLabel {
+  text-align: right;
+}
+
+.opsdeck-stats {
+  font-feature-settings: "tnum";
+}
+
 .opsdeck-state-running { color: #33d17a; }
 .opsdeck-state-paused,
 .opsdeck-state-restarting { color: #f5c211; }

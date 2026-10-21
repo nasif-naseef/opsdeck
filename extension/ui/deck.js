@@ -147,11 +147,19 @@ export class Deck {
                 this._navButtons[sid].actor.remove_style_pseudo_class('checked');
         }
         this._title.text = MODULES[id].heading;
+        this._syncVisibility();
         this._renderActive();
+    }
+
+    /** Let sources do extra work (like docker stats) only while on screen. */
+    _syncVisibility() {
+        for (const sid of SOURCE_IDS)
+            this._hub.sources[sid].setVisible?.(this._open && sid === this._active);
     }
 
     onMenuOpened() {
         this._open = true;
+        this._syncVisibility();
         this._renderActive();
         // Keep "updated 12s ago" honest while the menu is visible.
         this._tickId = this._scope.interval(5, () => this._updateSubtitle());
@@ -159,13 +167,15 @@ export class Deck {
 
     onMenuClosed() {
         this._open = false;
+        this._syncVisibility();
         this._tickId = this._scope.clear(this._tickId);
         this._confirm.clear();
     }
 
     _onChanged(id) {
         this._updateBadge(id);
-        if (id === this._active)
+        // The Ports view labels Docker-published ports, so it depends on docker data.
+        if (id === this._active || (id === 'docker' && this._active === 'ports'))
             this._renderActive();
     }
 

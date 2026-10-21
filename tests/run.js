@@ -11,8 +11,9 @@ import {formatAgo, formatDuration, matchesQuery, usageLevel} from '../extension/
 import {isLoopback, parseUsers, splitHostPort} from '../extension/lib/sockets.js';
 import {Emitter} from '../extension/lib/emitter.js';
 import {inRange, matchesPort, parseListening} from '../extension/sources/ports.js';
-import {parseEstablished, parseSshTarget, parseWho} from '../extension/sources/ssh.js';
-import {classifyDockerError, parseContainers, parseLabels, publishedPorts} from '../extension/sources/docker.js';
+import {parseEstablished, parseSshArgs, parseSshTarget, parseWho} from '../extension/sources/ssh.js';
+import {classifyDockerError, hostPortIndex, parseContainers, parseLabels, parsePublished, parseStats,
+    publishedPorts} from '../extension/sources/docker.js';
 import {panelPercent, parseCredentials, parseUsage} from '../extension/sources/claude.js';
 
 const here = GLib.path_get_dirname(GLib.filename_from_uri(import.meta.url)[0]);
@@ -143,6 +144,33 @@ test('parseSshTarget extracts the destination from argv', () => {
     eq(parseSshTarget(['ssh', '-v']), null);
 });
 
+test('parseSshArgs: options after the destination, remote command stops parsing', () => {
+    eq(parseSshTarget(['ssh', 'bastion', '-L', '8080:db:5432']), 'bastion');
+    eq(parseSshArgs(['ssh', 'bastion', '-L', '8080:db:5432']).forwards,
+        [{type: 'L', listen: '8080', to: 'db:5432'}]);
+    eq(parseSshArgs(['ssh', 'host', 'ls', '-L', '1:a:2']).forwards, []);
+});
+
+test('parseSshArgs forwards: -L/-R/-D, combined flags, binds, IPv6, sockets, -o', () => {
+    const {target, forwards} = parseSshArgs(['ssh', '-fNL', '5433:db.internal:5432', '-L127.0.0.1:8080:web:80',
+        '-D', '1080', '-R', '9000:localhost:3000', '-L', '[::1]:6000:[fd00::5]:6379',
+        '-L', '7000:/run/app.sock', '-R', '2222',
+        '-o', 'LocalForward 4000 api:443', '-o', 'DynamicForward=127.0.0.1:1081', '-o', 'ServerAliveInterval=30',
+        'deploy@jump']);
+    eq(target, 'deploy@jump');
+    eq(forwards, [
+        {type: 'L', listen: '5433', to: 'db.internal:5432'},
+        {type: 'L', listen: '127.0.0.1:8080', to: 'web:80'},
+        {type: 'D', listen: '1080', to: null},
+        {type: 'R', listen: '9000', to: 'localhost:3000'},
+        {type: 'L', listen: '[::1]:6000', to: '[fd00::5]:6379'},
+        {type: 'L', listen: '7000', to: '/run/app.sock'},
+        {type: 'R', listen: '2222', to: null},
+        {type: 'L', listen: '4000', to: 'api:443'},
+        {type: 'D', listen: '127.0.0.1:1081', to: null},
+    ]);
+});
+
 // ── docker ────────────────────────────────────────────────────────────────
 test('parseContainers', () => {
     const c = parseContainers(fixture('docker-ps.jsonl'));
@@ -162,6 +190,35 @@ test('docker helpers', () => {
     eq(classifyDockerError('Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?').kind, 'daemon');
     eq(classifyDockerError('failed to connect to the docker API at unix:///x.sock; check if the path is correct and if the daemon is running: dial unix /x.sock: connect: no such file or directory').kind, 'daemon');
     eq(classifyDockerError('Error: something odd\nmore').message, 'Error: something odd');
+});
+
+test('parsePublished expands ranges and dedupes v4/v6', () => {
+    eq(parsePublished('0.0.0.0:8080->80/tcp, :::8080->80/tcp, 5432/tcp, 127.0.0.1:5353->53/udp'),
+        [{hostPort: 8080, proto: 'tcp', containerPort: '80'}, {hostPort: 5353, proto: 'udp', containerPort: '53'}]);
+    eq(parsePublished('0.0.0.0:3000-3002->4000-4002/tcp').map(p => `${p.hostPort}:${p.containerPort}`),
+        ['3000:4000', '3001:4001', '3002:4002']);
+    eq(parsePublished('0.0.0.0:1-65535->1-65535/tcp').length, 1025);
+});
+
+test('hostPortIndex prefers running containers', () => {
+    const c = parseContainers(fixture('docker-ps.jsonl'));
+    const idx = hostPortIndex(c);
+    eq(idx.get('tcp/32918'), {name: 'shop-cache-1', containerPort: '6379', running: true});
+    eq(idx.get('tcp/8080').name, 'api');
+    eq(idx.has('udp/8080'), false);
+    const both = hostPortIndex([
+        {name: 'new', running: true, published: [{hostPort: 80, proto: 'tcp', containerPort: '80'}]},
+        {name: 'old', running: false, published: [{hostPort: 80, proto: 'tcp', containerPort: '80'}]},
+    ]);
+    eq(both.get('tcp/80').name, 'new');
+    eq(hostPortIndex(null).size, 0);
+});
+
+test('parseStats', () => {
+    const s = parseStats(fixture('docker-stats.jsonl'));
+    eq(s.size, 2);
+    eq(s.get('20e034387a26'), {cpu: '0.16%', mem: '6.379MiB', memPct: 0.02});
+    eq(s.get('a5f9bcbca836').cpu, '7.75%');
 });
 
 // ── claude ────────────────────────────────────────────────────────────────

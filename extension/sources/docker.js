@@ -22,7 +22,20 @@ const ID_RE = /^[0-9a-f]{12,64}$/;
  * @property {boolean} running
  * @property {string|null} project - docker compose project, if any
  * @property {string[]} ports - published ports, e.g. "8080→80/tcp"
+ * @property {PublishedPort[]} published
+ *
+ * @typedef {object} PublishedPort
+ * @property {number} hostPort
+ * @property {string} proto - tcp | udp | sctp
+ * @property {string} containerPort - e.g. "80" or "3000-3002"
+ *
+ * @typedef {object} ContainerStats
+ * @property {string} cpu - e.g. "7.75%"
+ * @property {string} mem - e.g. "34MiB"
+ * @property {number} memPct
  */
+
+const MAX_RANGE = 1024; // don't expand absurd published port ranges
 
 /** Parse `docker ps -a --format '{{json .}}'` (one JSON object per line). */
 export function parseContainers(raw) {
@@ -47,6 +60,7 @@ export function parseContainers(raw) {
             running: state === 'running',
             project: parseLabels(o.Labels)['com.docker.compose.project'] ?? null,
             ports: publishedPorts(o.Ports ?? ''),
+            published: parsePublished(o.Ports ?? ''),
         });
     }
     // Running first, then by name.
@@ -69,6 +83,71 @@ export function publishedPorts(ports) {
     for (const m of ports.matchAll(/:(\d+(?:-\d+)?)->(\d+(?:-\d+)?\/\w+)/g))
         out.add(`${m[1]}→${m[2]}`);
     return [...out];
+}
+
+/**
+ * Structured published ports, one entry per host port (ranges expanded).
+ * "0.0.0.0:8080->80/tcp, :::8080->80/tcp" → [{hostPort: 8080, proto: 'tcp', containerPort: '80'}]
+ *
+ * @returns {PublishedPort[]}
+ */
+export function parsePublished(ports) {
+    const out = new Map();
+    for (const m of ports.matchAll(/:(\d+)(?:-(\d+))?->(\d+(?:-\d+)?)\/(\w+)/g)) {
+        const first = Number(m[1]);
+        const last = m[2] ? Math.min(Number(m[2]), first + MAX_RANGE) : first;
+        const cFirst = Number(m[3].split('-')[0]);
+        for (let p = first; p <= last; p++) {
+            const containerPort = m[2] ? String(cFirst + (p - first)) : m[3];
+            out.set(`${m[4]}/${p}`, {hostPort: p, proto: m[4], containerPort});
+        }
+    }
+    return [...out.values()];
+}
+
+/**
+ * Index published host ports to the containers that own them.
+ *
+ * @param {Container[]} containers
+ * @returns {Map<string, {name: string, containerPort: string, running: boolean}>} keyed "tcp/8080"
+ */
+export function hostPortIndex(containers) {
+    const index = new Map();
+    for (const c of containers ?? []) {
+        for (const p of c.published ?? []) {
+            const key = `${p.proto}/${p.hostPort}`;
+            // Prefer a running container if a stopped one claims the same port.
+            if (!index.has(key) || c.running)
+                index.set(key, {name: c.name, containerPort: p.containerPort, running: c.running});
+        }
+    }
+    return index;
+}
+
+/**
+ * Parse `docker stats --no-stream --format '{{json .}}'`.
+ *
+ * @returns {Map<string, ContainerStats>} keyed by 12-char container id
+ */
+export function parseStats(raw) {
+    const out = new Map();
+    for (const line of raw.split('\n')) {
+        let o;
+        try {
+            o = JSON.parse(line);
+        } catch {
+            continue;
+        }
+        const id = String(o.ID ?? o.Container ?? '').slice(0, 12);
+        if (!id)
+            continue;
+        out.set(id, {
+            cpu: o.CPUPerc ?? '',
+            mem: String(o.MemUsage ?? '').split('/')[0].trim(),
+            memPct: parseFloat(o.MemPerc) || 0,
+        });
+    }
+    return out;
 }
 
 /** Turn docker CLI stderr into a user-facing SourceError. */
@@ -101,11 +180,57 @@ const TERMINALS = [
     ['xterm', cmd => ['-e', ...cmd]],
 ];
 
+function openInTerminal(cmd, okMessage) {
+    for (const [bin, build] of TERMINALS) {
+        const path = which(bin);
+        if (path && spawnDetached([path, ...build(cmd)]))
+            return actionResult(true, okMessage);
+    }
+    return actionResult(false, 'No terminal emulator found');
+}
+
 export class DockerSource {
     id = 'docker';
 
     constructor(scope) {
         this._scope = scope;
+        /** @type {Map<string, ContainerStats>} */
+        this.stats = new Map();
+        this.statsAt = 0;
+        this._wantStats = false;
+        this._statsInflight = false;
+        /** Set by the Hub: call when data changes outside fetch(). */
+        this.onUpdate = null;
+    }
+
+    /**
+     * Stats are expensive (`docker stats` samples for ~1-5s), so they are
+     * only collected while the Docker tab is on screen.
+     */
+    setVisible(visible) {
+        this._wantStats = visible;
+        if (visible)
+            this._refreshStats();
+    }
+
+    async _refreshStats() {
+        const docker = which('docker');
+        if (!docker || !this._wantStats || this._statsInflight || Date.now() - this.statsAt < 8000)
+            return;
+        this._statsInflight = true;
+        try {
+            const r = await run([docker, 'stats', '--no-stream', '--format', '{{json .}}'],
+                {cancellable: this._scope.cancellable, timeoutMs: 15000});
+            if (r.cancelled || this._scope.disposed)
+                return;
+            if (r.ok) {
+                this.stats = parseStats(r.stdout);
+                this.statsAt = Date.now();
+                this.onUpdate?.();
+            }
+        } finally {
+            this._statsInflight = false;
+        }
     }
 
     async fetch() {
@@ -121,7 +246,9 @@ export class DockerSource {
                 throw new SourceError('daemon', 'Docker did not respond', 'The daemon may be hung.');
             throw classifyDockerError(r.stderr);
         }
-        return parseContainers(r.stdout);
+        const containers = parseContainers(r.stdout);
+        this._refreshStats();
+        return containers;
     }
 
     count(containers) {
@@ -148,14 +275,18 @@ export class DockerSource {
         const docker = which('docker');
         if (!docker || !ID_RE.test(container.id))
             return actionResult(false, 'Invalid container');
-        const cmd = [docker, 'exec', '-it', container.id, 'sh', '-c',
-            'if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi'];
-        for (const [bin, build] of TERMINALS) {
-            const path = which(bin);
-            if (path && spawnDetached([path, ...build(cmd)]))
-                return actionResult(true, `Opened shell in ${container.name}`);
-        }
-        return actionResult(false, 'No terminal emulator found');
+        return openInTerminal([docker, 'exec', '-it', container.id, 'sh', '-c',
+            'if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi'],
+        `Opened shell in ${container.name}`);
+    }
+
+    /** Follow the container's logs in a terminal window. */
+    openLogs(container) {
+        const docker = which('docker');
+        if (!docker || !ID_RE.test(container.id))
+            return actionResult(false, 'Invalid container');
+        return openInTerminal([docker, 'logs', '--follow', '--tail', '200', container.id],
+            `Showing logs of ${container.name}`);
     }
 
     destroy() {}

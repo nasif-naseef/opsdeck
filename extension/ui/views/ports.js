@@ -2,7 +2,9 @@
 
 import Gio from 'gi://Gio';
 
+import {hostPortIndex} from '../../sources/docker.js';
 import {describePort, matchesPort, visiblePorts} from '../../sources/ports.js';
+import {matchesQuery} from '../../lib/format.js';
 import {button, chip, copyToClipboard, emptyState, hbox, label, vbox} from '../widgets.js';
 import {SourceView} from './base.js';
 
@@ -10,7 +12,7 @@ const MAX_ROWS = 60;
 
 export class PortsView extends SourceView {
     constructor(ctx) {
-        super(ctx, 'ports', {searchHint: 'Filter by port, process or PID'});
+        super(ctx, 'ports', {searchHint: 'Filter by port, process, PID or container'});
         this.addToolbarButton(button({
             iconName: 'edit-copy-symbolic',
             styleClass: 'opsdeck-button opsdeck-button-icon-only',
@@ -21,8 +23,12 @@ export class PortsView extends SourceView {
     }
 
     build(list, entries) {
+        // Docker publishes ports through root-owned docker-proxy (or nftables),
+        // which ss can't attribute; label them with the owning container.
+        this._containers = hostPortIndex(this.ctx.hub.state.docker.data);
         const shown = visiblePorts(entries, this.ctx.settings);
-        this._visible = shown.filter(e => matchesPort(e, this.query));
+        this._visible = shown.filter(e => matchesPort(e, this.query) ||
+            matchesQuery(this.query, this._container(e)?.name));
 
         const hidden = entries.length - shown.length;
         if (hidden)
@@ -48,17 +54,28 @@ export class PortsView extends SourceView {
 
         const info = vbox({x_expand: true, style_class: 'opsdeck-row-info'});
         const proc = e.processes[0];
+        const container = this._container(e);
         const title = hbox();
-        // ss only reveals processes we may inspect; others belong to root/system users.
-        title.add_child(label(proc ? proc.name : 'system process',
-            proc ? 'opsdeck-row-title' : 'opsdeck-row-title opsdeck-dim'));
+        if (container) {
+            title.add_child(label(container.name, 'opsdeck-row-title'));
+            title.add_child(chip('docker', 'in'));
+        } else {
+            // ss only reveals processes we may inspect; others belong to root/system users.
+            title.add_child(label(proc ? proc.name : 'system process',
+                proc ? 'opsdeck-row-title' : 'opsdeck-row-title opsdeck-dim'));
+        }
         title.add_child(chip(e.proto.toUpperCase()));
         if (e.localOnly)
             title.add_child(chip('local', 'muted'));
+        if (proc?.name === 'ssh')
+            title.add_child(chip('tunnel', 'out'));
         info.add_child(title);
         const pids = e.processes.map(p => p.pid).join(', ');
-        info.add_child(label([pids && `PID ${pids}`, e.hosts.join(' ')].filter(Boolean).join(' · '),
-            'opsdeck-meta'));
+        info.add_child(label([
+            container && `→ container port ${container.containerPort}`,
+            pids && `PID ${pids}`,
+            e.hosts.join(' '),
+        ].filter(Boolean).join(' · '), 'opsdeck-meta'));
         row.add_child(info);
 
         const actions = hbox({style_class: 'opsdeck-row-actions'});
@@ -84,6 +101,15 @@ export class PortsView extends SourceView {
             actions.add_child(this._killButton(proc));
         row.add_child(actions);
         return row;
+    }
+
+    /** Container publishing this port, unless a visible non-docker process owns it. */
+    _container(e) {
+        const c = this._containers?.get(`${e.proto}/${e.port}`);
+        if (!c)
+            return null;
+        const proc = e.processes[0];
+        return !proc || proc.name === 'docker-proxy' ? c : null;
     }
 
     _killButton(proc) {
