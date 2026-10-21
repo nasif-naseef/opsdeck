@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 //
-// OpsDeck: listening ports, SSH sessions, Docker containers and Claude plan
-// usage in one GNOME Shell top-bar menu.
+// OpsDeck: local system metrics, listening ports, SSH sessions, Docker
+// containers and Claude plan usage in one GNOME Shell top-bar menu.
 //
 //   sources/*  fetch + parse + actions (no UI, unit tested under gjs)
 //   lib/hub    polling, per-source state, settings reactions
@@ -19,6 +19,7 @@ import {ClaudeSource} from './sources/claude.js';
 import {DockerSource} from './sources/docker.js';
 import {PortsSource} from './sources/ports.js';
 import {SshSource} from './sources/ssh.js';
+import {SystemSource} from './sources/system.js';
 import {OpsDeckIndicator} from './ui/indicator.js';
 
 export default class OpsDeckExtension extends Extension {
@@ -27,6 +28,7 @@ export default class OpsDeckExtension extends Extension {
         this._scope = new Scope();
         this._sources = {
             claude: new ClaudeSource(this._scope),
+            system: new SystemSource(this._scope),
             ports: new PortsSource(this._scope),
             ssh: new SshSource(this._scope),
             docker: new DockerSource(this._scope),

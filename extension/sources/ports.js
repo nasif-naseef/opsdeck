@@ -4,8 +4,9 @@
 
 import {isLoopback, parseUsers, splitHostPort} from '../lib/sockets.js';
 import {CancelledError} from '../lib/scope.js';
-import {SourceError, actionResult} from '../lib/source.js';
-import {MY_PID, MY_UID, processExists, processUid, run, which} from '../lib/subprocess.js';
+import {canKill, killProcess} from '../lib/process.js';
+import {SourceError} from '../lib/source.js';
+import {run, which} from '../lib/subprocess.js';
 import {matchesQuery} from '../lib/format.js';
 
 /**
@@ -106,35 +107,12 @@ export class PortsSource {
         return visiblePorts(entries, settings).length;
     }
 
-    /** Can the current user signal this process? */
-    async canKill(pid) {
-        return pid > 1 && pid !== MY_PID &&
-            await processUid(pid, this._scope.cancellable) === MY_UID;
+    canKill(pid) {
+        return canKill(pid, this._scope);
     }
 
-    /** SIGTERM, then SIGKILL if the process is still alive after ~2s. */
-    async kill(pid) {
-        const kill = which('kill');
-        if (!kill)
-            return actionResult(false, '`kill` is not installed');
-        if (!Number.isInteger(pid) || !await this.canKill(pid))
-            return actionResult(false, `Not allowed to signal PID ${pid}`);
-
-        const term = await run([kill, '-TERM', String(pid)], {cancellable: this._scope.cancellable});
-        if (!term.ok)
-            return actionResult(false, term.stderr.trim() || 'SIGTERM failed');
-        for (let i = 0; i < 10; i++) {
-            await this._scope.sleep(200);
-            if (!processExists(pid))
-                return actionResult(true, `Stopped PID ${pid}`);
-        }
-        const hard = await run([kill, '-KILL', String(pid)], {cancellable: this._scope.cancellable});
-        if (!hard.ok)
-            return actionResult(false, hard.stderr.trim() || 'SIGKILL failed');
-        await this._scope.sleep(300);
-        return processExists(pid)
-            ? actionResult(false, `PID ${pid} survived SIGKILL`)
-            : actionResult(true, `Force-killed PID ${pid}`);
+    kill(pid) {
+        return killProcess(pid, this._scope);
     }
 
     destroy() {}

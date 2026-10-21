@@ -336,6 +336,47 @@
 .opsdeck-usage-pct.opsdeck-level-warn { color: #f5c211; }
 .opsdeck-usage-pct.opsdeck-level-critical { color: #ff7b63; }
 
+/* ── System metrics ──────────────────────────────────────── */
+
+.opsdeck-usage-plain {
+  font-size: 1em;
+  font-weight: 700;
+}
+
+.opsdeck-spark {
+  height: 36px;
+  margin: 2px 0;
+}
+
+.opsdeck-spark-a { color: -st-accent-color; }
+.opsdeck-spark-b { color: #ff7800; }
+
+.opsdeck-cores {
+  spacing: 2px;
+}
+
+.opsdeck-core {
+  border-radius: 2px;
+  background-color: rgba(127, 127, 127, 0.18);
+}
+
+.opsdeck-core-fill {
+  border-radius: 2px;
+}
+
+.opsdeck-core-fill.opsdeck-level-ok { background-color: #33d17a; }
+.opsdeck-core-fill.opsdeck-level-warn { background-color: #f5c211; }
+.opsdeck-core-fill.opsdeck-level-critical { background-color: #e01b24; }
+
+.opsdeck-meta.opsdeck-level-warn { color: #f5c211; }
+.opsdeck-meta.opsdeck-level-critical { color: #ff7b63; }
+
+.opsdeck-proc-cpu {
+  font-size: 1em;
+  min-width: 52px;
+  text-align: right;
+}
+
 /* ── Empty / error states ────────────────────────────────── */
 
 .opsdeck-empty {

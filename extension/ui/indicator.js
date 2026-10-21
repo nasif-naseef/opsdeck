@@ -10,7 +10,6 @@ import St from 'gi://St';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {usageLevel} from '../lib/format.js';
 import {SOURCE_IDS} from '../lib/hub.js';
 import {Deck} from './deck.js';
 import {hbox} from './widgets.js';
@@ -101,10 +100,11 @@ class OpsDeckIndicator extends PanelMenu.Button {
             !(value === 0 && this._settings.get_boolean('hide-zero-counters'));
         actor.visible = show;
         if (show) {
-            text.text = id === 'claude' ? `${value}%` : `${value}`;
+            text.text = this._hub.format(id, value);
             actor.style_class = 'opsdeck-counter';
-            if (id === 'claude')
-                actor.add_style_class_name(`opsdeck-level-${usageLevel(value)}`);
+            const level = this._hub.level(id, value);
+            if (level)
+                actor.add_style_class_name(`opsdeck-level-${level}`);
         }
         // Never leave an empty button in the top bar.
         this._fallbackIcon.visible = SOURCE_IDS.every(sid => !this._counters[sid].actor.visible);

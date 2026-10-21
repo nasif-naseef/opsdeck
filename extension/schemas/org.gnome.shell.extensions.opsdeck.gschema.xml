@@ -11,6 +11,10 @@
       <default>true</default>
       <summary>Show Claude usage in the top bar</summary>
     </key>
+    <key name="show-system-counter" type="b">
+      <default>true</default>
+      <summary>Show a system metric in the top bar</summary>
+    </key>
     <key name="show-ports-counter" type="b">
       <default>true</default>
       <summary>Show listening-port count in the top bar</summary>
@@ -34,6 +38,10 @@
       <summary>Enable the Claude usage module</summary>
       <description>When disabled, OpsDeck never reads Claude Code credentials or contacts the network.</description>
     </key>
+    <key name="enable-system" type="b">
+      <default>true</default>
+      <summary>Enable the local system metrics module</summary>
+    </key>
     <key name="enable-ports" type="b">
       <default>true</default>
       <summary>Enable the listening ports module</summary>
@@ -52,6 +60,11 @@
       <range min="60" max="1800"/>
       <default>120</default>
       <summary>Claude usage refresh interval in seconds</summary>
+    </key>
+    <key name="refresh-interval-system" type="i">
+      <range min="1" max="60"/>
+      <default>3</default>
+      <summary>System metrics refresh interval in seconds</summary>
     </key>
     <key name="refresh-interval-ports" type="i">
       <range min="2" max="600"/>
@@ -79,6 +92,15 @@
       <default>'max'</default>
       <summary>Which Claude limit the top bar shows</summary>
       <description>5h: session window. 7d: weekly window. max: whichever is closest to its limit.</description>
+    </key>
+    <key name="system-panel-metric" type="s">
+      <choices>
+        <choice value="cpu"/>
+        <choice value="memory"/>
+        <choice value="temp"/>
+      </choices>
+      <default>'cpu'</default>
+      <summary>Which system metric the top bar shows</summary>
     </key>
     <key name="port-range-min" type="i">
       <range min="1" max="65535"/>

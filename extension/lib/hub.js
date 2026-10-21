@@ -7,7 +7,7 @@ import {Emitter} from './emitter.js';
 import {CancelledError} from './scope.js';
 import {SourceError} from './source.js';
 
-export const SOURCE_IDS = ['claude', 'ports', 'ssh', 'docker'];
+export const SOURCE_IDS = ['claude', 'system', 'ports', 'ssh', 'docker'];
 
 // Errors after which old data would be misleading rather than useful.
 const CLEARS_DATA = new Set(['missing', 'daemon', 'permission', 'signed-out']);
@@ -56,6 +56,7 @@ export class Hub extends Emitter {
             ...['port-range-min', 'port-range-max', 'ports-show-udp'].map(k =>
                 settings.connect(`changed::${k}`, () => this.emit('changed', 'ports'))),
             settings.connect('changed::claude-panel-window', () => this.emit('changed', 'claude')),
+            settings.connect('changed::system-panel-metric', () => this.emit('changed', 'system')),
             settings.connect('changed::docker-show-stopped', () => this.emit('changed', 'docker')),
         ];
     }
@@ -71,6 +72,23 @@ export class Hub extends Emitter {
         if (!s.enabled || s.data === null)
             return null;
         return this.sources[id].count(s.data, this._settings);
+    }
+
+    /**
+     * Gauge sources (a percentage or temperature, not a count) format their
+     * own value and say how close to a limit it is.
+     */
+    isGauge(id) {
+        return typeof this.sources[id].formatCount === 'function';
+    }
+
+    format(id, value) {
+        return this.isGauge(id) ? this.sources[id].formatCount(value, this._settings) : String(value);
+    }
+
+    /** 'ok' | 'warn' | 'critical' for gauges, null for counts. */
+    level(id, value) {
+        return this.sources[id].level?.(value, this._settings) ?? null;
     }
 
     refreshAll({force = false} = {}) {

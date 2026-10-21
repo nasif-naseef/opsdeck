@@ -14,6 +14,7 @@ import Soup from 'gi://Soup?version=3.0';
 
 import {SourceError} from '../lib/source.js';
 import {readText} from '../lib/subprocess.js';
+import {usageLevel} from '../lib/format.js';
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const BETA_HEADER = 'oauth-2025-04-20';
@@ -154,6 +155,14 @@ export class ClaudeSource {
 
     count(usage, settings) {
         return panelPercent(usage.windows, settings.get_string('claude-panel-window'));
+    }
+
+    formatCount(value) {
+        return `${value}%`;
+    }
+
+    level(value) {
+        return usageLevel(value);
     }
 
     async _get(token) {

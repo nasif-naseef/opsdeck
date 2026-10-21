@@ -9,6 +9,8 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 const MODULES = [
     {id: 'claude', title: 'Claude Usage', icon: 'claude',
         subtitle: 'Plan limits of the account Claude Code is signed in with. Reads the token read-only and never modifies it.'},
+    {id: 'system', title: 'System', icon: 'system',
+        subtitle: 'CPU, memory, disks, network, temperature, GPU, battery and top processes of this machine.'},
     {id: 'ports', title: 'Listening Ports', icon: 'ports',
         subtitle: 'TCP and UDP sockets from ss, with process, kill and open-in-browser.'},
     {id: 'ssh', title: 'SSH Sessions', icon: 'ssh',
@@ -69,6 +71,10 @@ export default class OpsDeckPreferences extends ExtensionPreferences {
             const extra = [this._spin(settings, `refresh-interval-${m.id}`, 'Refresh every', 'Seconds')];
             if (m.id === 'claude')
                 extra.push(this._claudeWindowRow(settings));
+            if (m.id === 'system') {
+                extra.push(this._comboRow(settings, 'system-panel-metric', 'Top bar shows',
+                    ['cpu', 'memory', 'temp'], ['CPU usage', 'Memory usage', 'CPU temperature']));
+            }
             if (m.id === 'ports') {
                 extra.push(this._switch(settings, 'ports-show-udp', 'Include UDP',
                     'UDP sockets are mostly system services (mDNS, DNS, media).'));
@@ -100,6 +106,13 @@ export default class OpsDeckPreferences extends ExtensionPreferences {
             adjustment: new Gtk.Adjustment({lower: range[0], upper: range[1], step_increment: 1, page_increment: 10}),
         });
         settings.bind(key, row, 'value', Gio.SettingsBindFlags.DEFAULT);
+        return row;
+    }
+
+    _comboRow(settings, key, title, values, labels) {
+        const row = new Adw.ComboRow({title, model: Gtk.StringList.new(labels)});
+        row.selected = Math.max(0, values.indexOf(settings.get_string(key)));
+        row.connect('notify::selected', () => settings.set_string(key, values[row.selected]));
         return row;
     }
 

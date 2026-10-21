@@ -10,6 +10,9 @@ import System from 'system';
 import {formatAgo, formatDuration, matchesQuery, usageLevel} from '../extension/lib/format.js';
 import {isLoopback, parseUsers, splitHostPort} from '../extension/lib/sockets.js';
 import {Emitter} from '../extension/lib/emitter.js';
+import {isSessionCritical} from '../extension/lib/process.js';
+import {cpuPercent, describeCmdline, formatBytes, formatRate, netRates, parseLoadavg, parseMeminfo, parseMounts, parseNetDev,
+    parseNvidiaSmi, parseProcStat, parseTop, parseTopMem, parseUptime, pickCpuTemp} from '../extension/lib/procfs.js';
 import {inRange, matchesPort, parseListening} from '../extension/sources/ports.js';
 import {parseEstablished, parseSshArgs, parseSshTarget, parseWho} from '../extension/sources/ssh.js';
 import {classifyDockerError, hostPortIndex, parseContainers, parseLabels, parsePublished, parseStats,
@@ -250,6 +253,110 @@ test('panelPercent preference', () => {
     eq([panelPercent(w, '5h'), panelPercent(w, '7d'), panelPercent(w, 'max')], [20, 60, 60]);
     eq(panelPercent(parseUsage({seven_day: {utilization: 5}}), '5h'), 5);
     eq(panelPercent([], 'max'), null);
+});
+
+// ── system (procfs) ───────────────────────────────────────────────────────
+test('parseProcStat + cpuPercent', () => {
+    const a = parseProcStat('cpu  100 0 100 700 100 0 0 0 0 0\ncpu0 50 0 50 350 50 0 0 0 0 0\ncpu1 50 0 50 350 50 0 0 0 0 0\nintr 1 2\n');
+    const b = parseProcStat('cpu  250 0 150 800 100 0 0 0 0 0\ncpu0 150 0 100 350 50 0 0 0 0 0\ncpu1 100 0 50 450 50 0 0 0 0 0\n');
+    eq(a.total, [200, 800]);
+    eq(a.cores.length, 2);
+    eq(cpuPercent(a.total, b.total), 66.66666666666666);
+    eq(cpuPercent(a.cores[0], b.cores[0]), 100);
+    eq(cpuPercent(a.cores[1], b.cores[1]), 33.33333333333333);
+    eq(cpuPercent(null, b.total), null);
+    eq(cpuPercent(b.total, b.total), 0);
+});
+
+test('parseMeminfo uses MemAvailable', () => {
+    const m = parseMeminfo('MemTotal:       32000000 kB\nMemFree:  1000000 kB\nMemAvailable:   24000000 kB\n' +
+        'Buffers: 1 kB\nSwapTotal:      8000000 kB\nSwapFree:       6000000 kB\nHugePages_Total:       0\n');
+    eq(m, {total: 32000000 * 1024, used: 8000000 * 1024, available: 24000000 * 1024,
+        swapTotal: 8000000 * 1024, swapUsed: 2000000 * 1024});
+});
+
+test('loadavg, uptime', () => {
+    eq(parseLoadavg('18.03 28.44 22.07 12/3307 3310823\n'), [18.03, 28.44, 22.07]);
+    eq(parseUptime('195136.56 5422806.00\n'), 195136);
+});
+
+test('parseNetDev skips virtual interfaces; netRates', () => {
+    const head = 'Inter-|   Receive |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes\n';
+    const row = (n, rx, tx) => `${n}: ${rx} 0 0 0 0 0 0 0 ${tx} 0 0 0 0 0 0 0\n`;
+    const a = parseNetDev(head + row('lo', 9, 9) + row('wlp18s0', 1000, 500) + row('docker0', 5, 5) +
+        row('br-ba748a51c46e', 5, 5) + row('veth2bb3762', 5, 5) + row('wg0', 0, 0));
+    eq([...a.keys()], ['wlp18s0', 'wg0']);
+    const b = parseNetDev(head + row('wlp18s0', 3000, 600) + row('wg0', 100, 0) + row('tun0', 1, 1));
+    eq(netRates(a, b, 2), [{name: 'wlp18s0', rx: 1000, tx: 50}, {name: 'wg0', rx: 50, tx: 0}]);
+    eq(netRates(b, a, 1).find(r => r.name === 'wlp18s0'), {name: 'wlp18s0', rx: 0, tx: 0});
+});
+
+test('parseMounts keeps real filesystems once each', () => {
+    const m = parseMounts([
+        '/dev/nvme0n1p4 / ext4 rw,relatime 0 0',
+        'proc /proc proc rw 0 0',
+        '/dev/nvme0n1p1 /boot/efi vfat rw 0 0',
+        '/dev/sda1 /media/me/My\\040Disk exfat rw 0 0',
+        '/dev/sdb1 /data btrfs rw,subvol=/@data 0 0',
+        '/dev/sdb1 /home btrfs rw,subvol=/@home 0 0',
+        '/dev/loop3 /snap/core22/1 squashfs ro 0 0',
+        'overlay /var/lib/docker/overlay2/x/merged overlay rw 0 0',
+        'tmpfs /run tmpfs rw 0 0',
+    ].join('\n'));
+    eq(m.map(x => x.mount), ['/', '/boot/efi', '/media/me/My Disk', '/data']);
+});
+
+test('parseTop reads the second iteration', () => {
+    const block = (cpu1, cpu2) => `top - 15:00:00 up 2 days\nTasks: 3 total\n\n` +
+        `    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n` +
+        `3586289 nasif     20   0   11.2g 754844  19344 S ${cpu1}   2.4 220:10.58 python train.py\n` +
+        `   1234 root      20   0 1108424   1.8g  26620 R ${cpu2}   3.0   1:04.60 Xwayland\n`;
+    const p = parseTop(block('5.0', '1.0') + '\n' + block('959.3', '98.1'));
+    eq(p.map(x => [x.pid, x.user, x.cpu, x.command]),
+        [[3586289, 'nasif', 959.3, 'python train.py'], [1234, 'root', 98.1, 'Xwayland']]);
+    eq(p[0].rss, 754844 * 1024);
+    eq(parseTopMem('1.8g'), Math.round(1.8 * 1024 ** 3));
+    eq(parseTopMem('512m'), 512 * 1024 ** 2);
+    eq(parseTopMem('?'), 0);
+});
+
+test('parseNvidiaSmi handles commas in names and N/A', () => {
+    eq(parseNvidiaSmi('NVIDIA GeForce RTX 5070 Laptop GPU, 0, 110, 8151, 57, 8.07\nWeird, Name GPU, 50, 1, 2, [N/A], [N/A]\n'), [
+        {name: 'NVIDIA GeForce RTX 5070 Laptop GPU', util: 0, memUsed: 110 * 1024 * 1024,
+            memTotal: 8151 * 1024 * 1024, temp: 57, power: 8.07},
+        {name: 'Weird, Name GPU', util: 50, memUsed: 1024 * 1024, memTotal: 2 * 1024 * 1024, temp: null, power: null},
+    ]);
+});
+
+test('pickCpuTemp prefers the package sensor', () => {
+    eq(pickCpuTemp([{source: 'INT3400 Thermal', label: '', celsius: 20}, {source: 'SEN2', label: '', celsius: 86},
+        {source: 'TCPU', label: '', celsius: 85}, {source: 'x86_pkg_temp', label: '', celsius: 86}]), 86);
+    eq(pickCpuTemp([{source: 'k10temp', label: 'Tctl', celsius: 61.5}, {source: 'nvme', label: 'Composite', celsius: 40}]), 61.5);
+    eq(pickCpuTemp([{source: 'TCPU', label: '', celsius: 70}, {source: 'acpitz', label: '', celsius: 30}]), 70);
+    eq(pickCpuTemp([{source: 'nvme', label: 'Composite', celsius: 40}]), null);
+    eq(pickCpuTemp([]), null);
+});
+
+test('session-critical processes are never offered for kill', () => {
+    eq(['gnome-shell', 'gnome-session-b', 'Xwayland', 'pipewire-pulse', 'gsd-power', 'systemd'].map(isSessionCritical),
+        [true, true, true, true, true, true]);
+    eq(['python', 'node', 'nginx', 'gjs', 'code'].map(isSessionCritical), [false, false, false, false, false]);
+});
+
+test('describeCmdline names what an interpreter runs', () => {
+    eq(describeCmdline(['/usr/bin/python3', '-u', '/srv/app/worker.py', '--n', '4']), 'python3 worker.py');
+    eq(describeCmdline(['python', '-m', 'uvicorn', 'main:app']), 'python uvicorn');
+    eq(describeCmdline(['/home/me/.local/bin/node', '/x/node_modules/.bin/vite']), 'node vite');
+    eq(describeCmdline(['java', '-Xmx2g', '-jar', '/opt/app.jar']), 'java app.jar');
+    eq(describeCmdline(['bash', '-c', 'sleep 1']), 'bash -c');
+    eq(describeCmdline(['/usr/lib/firefox/firefox', '-contentproc']), 'firefox');
+    eq(describeCmdline([]), null);
+});
+
+test('formatBytes / formatRate', () => {
+    eq([formatBytes(512), formatBytes(1536), formatBytes(8151 * 1024 * 1024), formatBytes(NaN)],
+        ['512 B', '1.5 KiB', '8.0 GiB', '—']);
+    eq([formatRate(0), formatRate(1250), formatRate(12.5e6)], ['0 bit/s', '10.0 kbit/s', '100 Mbit/s']);
 });
 
 // ── report ────────────────────────────────────────────────────────────────

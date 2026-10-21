@@ -16,9 +16,11 @@ import {ClaudeView} from './views/claude.js';
 import {DockerView} from './views/docker.js';
 import {PortsView} from './views/ports.js';
 import {SshView} from './views/ssh.js';
+import {SystemView} from './views/system.js';
 
 export const MODULES = {
     claude: {title: 'Claude', heading: 'Claude Usage', View: ClaudeView},
+    system: {title: 'System', heading: 'This Machine', View: SystemView},
     ports: {title: 'Ports', heading: 'Listening Ports', View: PortsView},
     ssh: {title: 'SSH', heading: 'SSH Sessions', View: SshView},
     docker: {title: 'Docker', heading: 'Docker Containers', View: DockerView},
@@ -182,7 +184,12 @@ export class Deck {
     _renderActive() {
         if (!this._open || !this._active)
             return;
+        // Lists are rebuilt on every poll; keep the reader's scroll position.
+        const adj = this._scroll.vadjustment;
+        const keep = this._lastRendered === this._active ? adj.value : 0;
         this._views[this._active].render();
+        this._lastRendered = this._active;
+        adj.value = keep;
         this._updateSubtitle();
     }
 
@@ -201,11 +208,14 @@ export class Deck {
     _updateBadge(id) {
         const {badge} = this._navButtons[id];
         const value = this._hub.count(id);
-        badge.visible = value !== null && !(value === 0 && id !== 'claude');
-        badge.text = id === 'claude' ? `${value}%` : `${value}`;
+        badge.visible = value !== null && (value !== 0 || this._hub.isGauge(id));
         badge.style_class = 'opsdeck-nav-badge';
-        if (id === 'claude' && value !== null && value >= 70)
-            badge.add_style_class_name(value >= 90 ? 'opsdeck-level-critical' : 'opsdeck-level-warn');
+        if (value === null)
+            return;
+        badge.text = this._hub.format(id, value);
+        const level = this._hub.level(id, value);
+        if (level && level !== 'ok')
+            badge.add_style_class_name(`opsdeck-level-${level}`);
     }
 
     _syncNav() {

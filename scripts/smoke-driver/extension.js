@@ -86,7 +86,7 @@ export default class SmokeDriver extends Extension {
                 {type: 'D', listen: '1080', to: null},
             ]}]}};
 
-        for (const tab of ['claude', 'ports', 'ssh', 'docker']) {
+        for (const tab of ['claude', 'system', 'ports', 'ssh', 'docker']) {
             if (tab === 'ssh') {
                 // re-apply right before the shot so a real poll can't replace it
                 Object.assign(hub.state.ssh, fakeSsh);
@@ -94,8 +94,18 @@ export default class SmokeDriver extends Extension {
             }
             indicator()._deck.select(tab);
             // docker stats sample for a few seconds before they appear
-            await sleep(tab === 'docker' ? 9000 : 1500);
+            await sleep({docker: 9000, system: 7000}[tab] ?? 1500);
             await screenshot(tab);
+            if (tab === 'system') {
+                // Scroll down; the next poll's re-render must keep the position.
+                const adj = indicator()._deck._scroll.vadjustment;
+                adj.value = adj.upper;
+                await sleep(4000);
+                await screenshot('system-lower');
+                if (adj.value < 50)
+                    throw new Error(`scroll position lost on re-render (${adj.value})`);
+                adj.value = 0;
+            }
             console.log(`SMOKE tab ${tab} ok`);
         }
         indicator().menu.close();
