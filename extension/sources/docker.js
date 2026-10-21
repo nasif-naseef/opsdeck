@@ -262,7 +262,7 @@ export class DockerSource {
             return actionResult(false, 'Invalid docker action');
         const argv = [docker, verb];
         if (verb !== 'start')
-            argv.push('--time', '10');
+            argv.push('-t', '10');
         argv.push(container.id);
         const r = await run(argv, {cancellable: this._scope.cancellable, timeoutMs: 30000});
         return r.ok

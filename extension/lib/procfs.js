@@ -8,10 +8,13 @@ const KIB = 1024;
 /**
  * /proc/stat cpu lines → cumulative jiffies.
  *
- * @returns {{total: number[], cores: number[][]}} each entry [busy, idle]
+ * Offline CPUs are absent from /proc/stat, so cores are keyed by id rather
+ * than indexed (cpu0, cpu2, cpu4 would otherwise leave holes).
+ *
+ * @returns {{total: number[], cores: Map<number, number[]>}} each sample [busy, idle]
  */
 export function parseProcStat(text) {
-    const out = {total: null, cores: []};
+    const out = {total: null, cores: new Map()};
     for (const line of text.split('\n')) {
         const m = line.match(/^cpu(\d*)\s+(.+)$/);
         if (!m)
@@ -24,7 +27,7 @@ export function parseProcStat(text) {
         if (m[1] === '')
             out.total = [busy, idle];
         else
-            out.cores[Number(m[1])] = [busy, idle];
+            out.cores.set(Number(m[1]), [busy, idle]);
     }
     return out;
 }

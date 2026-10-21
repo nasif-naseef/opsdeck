@@ -10,7 +10,9 @@ import System from 'system';
 import {formatAgo, formatDuration, matchesQuery, usageLevel} from '../extension/lib/format.js';
 import {isLoopback, parseUsers, splitHostPort} from '../extension/lib/sockets.js';
 import {Emitter} from '../extension/lib/emitter.js';
-import {isSessionCritical} from '../extension/lib/process.js';
+import {escalate, isGone, isSessionCritical, signalBlocker} from '../extension/lib/process.js';
+import {self} from '../extension/lib/subprocess.js';
+import {Scope} from '../extension/lib/scope.js';
 import {cpuPercent, describeCmdline, formatBytes, formatRate, netRates, parseLoadavg, parseMeminfo, parseMounts, parseNetDev,
     parseNvidiaSmi, parseProcStat, parseTop, parseTopMem, parseUptime, pickCpuTemp} from '../extension/lib/procfs.js';
 import {inRange, matchesPort, parseListening} from '../extension/sources/ports.js';
@@ -260,12 +262,18 @@ test('parseProcStat + cpuPercent', () => {
     const a = parseProcStat('cpu  100 0 100 700 100 0 0 0 0 0\ncpu0 50 0 50 350 50 0 0 0 0 0\ncpu1 50 0 50 350 50 0 0 0 0 0\nintr 1 2\n');
     const b = parseProcStat('cpu  250 0 150 800 100 0 0 0 0 0\ncpu0 150 0 100 350 50 0 0 0 0 0\ncpu1 100 0 50 450 50 0 0 0 0 0\n');
     eq(a.total, [200, 800]);
-    eq(a.cores.length, 2);
+    eq(a.cores.size, 2);
     eq(cpuPercent(a.total, b.total), 66.66666666666666);
-    eq(cpuPercent(a.cores[0], b.cores[0]), 100);
-    eq(cpuPercent(a.cores[1], b.cores[1]), 33.33333333333333);
+    eq(cpuPercent(a.cores.get(0), b.cores.get(0)), 100);
+    eq(cpuPercent(a.cores.get(1), b.cores.get(1)), 33.33333333333333);
     eq(cpuPercent(null, b.total), null);
     eq(cpuPercent(b.total, b.total), 0);
+});
+
+test('parseProcStat keys cores by id when CPUs are offline (nosmt / hotplug)', () => {
+    const s = parseProcStat('cpu  1 0 1 8 0 0 0 0 0 0\ncpu0 1 0 1 8 0 0 0 0 0 0\ncpu2 1 0 1 8 0 0 0 0 0 0\ncpu6 1 0 1 8 0 0 0 0 0 0\n');
+    eq([...s.cores.keys()], [0, 2, 6]);
+    eq([...s.cores.values()].every(v => Array.isArray(v) && v.length === 2), true);
 });
 
 test('parseMeminfo uses MemAvailable', () => {
@@ -353,11 +361,54 @@ test('describeCmdline names what an interpreter runs', () => {
     eq(describeCmdline([]), null);
 });
 
+test('signalBlocker: every reason a process must not be signalled', () => {
+    const me = self();
+    const ok = {pid: 4242, uid: me.uid, comm: 'python', argv: ['python'], state: 'S'};
+    eq(signalBlocker(ok), null);
+    eq(signalBlocker(ok, {expectComm: 'python'}), null);
+    eq(signalBlocker(null), 'The process has already exited');
+    eq(signalBlocker({...ok, state: 'Z'}), 'The process has already exited');
+    eq(signalBlocker({...ok, pid: 1}), 'PID 1 is protected');
+    eq(signalBlocker({...ok, pid: me.pid}), `PID ${me.pid} is protected`);
+    eq(signalBlocker({...ok, uid: me.uid + 1}), 'PID 4242 belongs to another user');
+    eq(signalBlocker({...ok, comm: 'gnome-shell'}), 'gnome-shell is part of the desktop session');
+    eq(signalBlocker({...ok, comm: 'bash'}, {expectComm: 'ssh'}), 'PID 4242 is now bash, not ssh');
+    eq([isGone(null), isGone({...ok, state: 'Z'}), isGone(ok)], [true, true, false]);
+});
+
 test('formatBytes / formatRate', () => {
     eq([formatBytes(512), formatBytes(1536), formatBytes(8151 * 1024 * 1024), formatBytes(NaN)],
         ['512 B', '1.5 KiB', '8.0 GiB', '—']);
     eq([formatRate(0), formatRate(1250), formatRate(12.5e6)], ['0 bit/s', '10.0 kbit/s', '100 Mbit/s']);
 });
+
+// ── async: escalate() ladder (no real processes involved) ──────────────────
+const loop = new GLib.MainLoop(null, false);
+async function asyncTests() {
+    const scope = new Scope();
+    const sent = [];
+    // Target dies after the second signal.
+    let life = 2;
+    let r = await escalate({signals: ['HUP', 'TERM', 'KILL'], scope, what: 'x',
+        send: async sig => { sent.push(sig); life--; return {ok: true, status: 0, stderr: ''}; },
+        alive: async () => life > 0});
+    test('escalate stops as soon as the target is gone', () => {
+        eq(sent, ['HUP', 'TERM']);
+        eq(r, {ok: true, message: 'Stopped x'});
+    });
+    // Already gone: pkill-style status 1 counts as success.
+    r = await escalate({signals: ['TERM'], scope, what: 'y',
+        send: async () => ({ok: false, status: 1, stderr: ''}), alive: async () => false});
+    test('escalate treats "nothing matched" as already gone', () => eq(r.ok, true));
+    // A blocker mid-ladder (status 2) stops with its reason.
+    r = await escalate({signals: ['TERM', 'KILL'], scope, what: 'z',
+        send: async () => ({ok: false, status: 2, stderr: 'PID 9 is now bash, not ssh'}), alive: async () => true});
+    test('escalate stops on a mid-ladder block and reports why', () =>
+        eq(r, {ok: false, message: 'PID 9 is now bash, not ssh'}));
+    scope.dispose();
+}
+asyncTests().catch(e => failures.push(`✗ async tests crashed: ${e.stack}`)).finally(() => loop.quit());
+loop.run();
 
 // ── report ────────────────────────────────────────────────────────────────
 for (const f of failures)

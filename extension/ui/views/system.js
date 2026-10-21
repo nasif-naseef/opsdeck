@@ -150,7 +150,7 @@ export class SystemView extends SourceView {
                 sensitive: !busy,
                 onClick: () => {
                     if (this.ctx.confirm.confirm(key))
-                        this.ctx.runAction('system', key, () => this.ctx.hub.sources.system.kill(p.pid));
+                        this.ctx.runAction('system', key, () => this.ctx.hub.sources.system.kill(p));
                 },
             }));
         }

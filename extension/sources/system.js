@@ -12,7 +12,7 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
 import {CancelledError} from '../lib/scope.js';
-import {canKill, isSessionCritical, killProcess} from '../lib/process.js';
+import {procInfo, signalBlocker, signalLadder} from '../lib/process.js';
 import {cpuPercent, describeCmdline, netRates, parseLoadavg, parseMeminfo, parseMounts, parseNetDev, parseNvidiaSmi,
     parseProcStat, parseTop, parseUptime, pickCpuTemp} from '../lib/procfs.js';
 import {SourceError} from '../lib/source.js';
@@ -100,7 +100,6 @@ export class SystemSource {
         this.onUpdate = null;
         this._hostname = GLib.get_host_name();
         this._kernel = null;
-        this._me = GLib.get_user_name();
     }
 
     setVisible(visible) {
@@ -132,7 +131,9 @@ export class SystemSource {
 
         const cpu = {
             total: cpuPercent(this._prevStat.total, stat.total) ?? 0,
-            cores: stat.cores.map((c, i) => cpuPercent(this._prevStat.cores[i], c) ?? 0),
+            // Online CPUs in id order; a CPU that just came online reads 0 once.
+            cores: [...stat.cores].sort(([a], [b]) => a - b)
+                .map(([id, c]) => cpuPercent(this._prevStat.cores.get(id), c) ?? 0),
         };
         this._prevStat = stat;
 
@@ -238,7 +239,7 @@ export class SystemSource {
                 // Calling nvidia-smi wakes a runtime-suspended dGPU (and drains
                 // the battery on hybrid laptops), so leave a sleeping one alone.
                 const state = (await read(`${g.card}/device/power/runtime_status`))?.trim();
-                if (state === 'suspended') {
+                if (state === 'suspended' || state === 'suspending') {
                     out.push({vendor: 'nvidia', name: 'NVIDIA GPU', asleep: true});
                     continue;
                 }
@@ -288,14 +289,13 @@ export class SystemSource {
             {cancellable: this._scope.cancellable, timeoutMs: 5000});
         if (!r.ok)
             return null;
-        const rows = parseTop(r.stdout)
-            .filter(p => p.command !== 'top')
-            .slice(0, TOP_ROWS)
-            .map(p => ({...p, own: p.user === this._me && !isSessionCritical(p.command)}));
-        // top only knows the 15-char program name; add what it's running.
+        const rows = parseTop(r.stdout).filter(p => p.command !== 'top').slice(0, TOP_ROWS);
+        // One /proc read per row: real ownership (top truncates long user
+        // names) and what the process is running (top only has its name).
         await Promise.all(rows.map(async p => {
-            const cmdline = await readText(`/proc/${p.pid}/cmdline`, this._scope.cancellable);
-            p.label = (cmdline && describeCmdline(cmdline.split('\0').filter(Boolean))) || p.command;
+            const info = await procInfo(p.pid, this._scope.cancellable);
+            p.own = signalBlocker(info, {expectComm: p.command}) === null;
+            p.label = (info && describeCmdline(info.argv)) || p.command;
         }));
         return rows;
     }
@@ -319,12 +319,9 @@ export class SystemSource {
         return usageLevel(value);
     }
 
-    canKill(pid) {
-        return canKill(pid, this._scope);
-    }
-
-    kill(pid) {
-        return killProcess(pid, this._scope);
+    /** @param {{pid: number, command: string}} proc - as listed, so a recycled PID is refused */
+    kill(proc) {
+        return signalLadder(proc.pid, this._scope, {expectComm: proc.command});
     }
 
     destroy() {

@@ -124,7 +124,7 @@ export class PortsView extends SourceView {
             sensitive: !busy,
             onClick: () => {
                 if (this.ctx.confirm.confirm(key))
-                    this.ctx.runAction('ports', key, () => this.ctx.hub.sources.ports.kill(proc.pid));
+                    this.ctx.runAction('ports', key, () => this.ctx.hub.sources.ports.kill(proc));
             },
         });
     }

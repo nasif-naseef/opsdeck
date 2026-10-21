@@ -4,7 +4,7 @@
 
 import {isLoopback, parseUsers, splitHostPort} from '../lib/sockets.js';
 import {CancelledError} from '../lib/scope.js';
-import {canKill, killProcess} from '../lib/process.js';
+import {canSignal, signalLadder} from '../lib/process.js';
 import {SourceError} from '../lib/source.js';
 import {run, which} from '../lib/subprocess.js';
 import {matchesQuery} from '../lib/format.js';
@@ -89,17 +89,12 @@ export class PortsSource {
             throw new SourceError('error', r.stderr.trim() || 'ss failed');
         const entries = parseListening(r.stdout);
 
-        // Mark processes the user is allowed to signal (one /proc read per pid).
-        const pids = [...new Set(entries.flatMap(e => e.processes.map(p => p.pid)))];
-        const owned = new Set();
-        await Promise.all(pids.map(async pid => {
-            if (await this.canKill(pid))
-                owned.add(pid);
+        // Kill is only offered when a port has exactly one owning process,
+        // so only those need the (per-pid /proc) ownership check.
+        await Promise.all(entries.filter(e => e.processes.length === 1).map(async e => {
+            const p = e.processes[0];
+            p.own = await canSignal(p.pid, this._scope, {expectComm: p.name});
         }));
-        for (const e of entries) {
-            for (const p of e.processes)
-                p.own = owned.has(p.pid);
-        }
         return entries;
     }
 
@@ -107,12 +102,9 @@ export class PortsSource {
         return visiblePorts(entries, settings).length;
     }
 
-    canKill(pid) {
-        return canKill(pid, this._scope);
-    }
-
-    kill(pid) {
-        return killProcess(pid, this._scope);
+    /** @param {{pid: number, name: string}} proc - as listed, so a recycled PID is refused */
+    kill(proc) {
+        return signalLadder(proc.pid, this._scope, {expectComm: proc.name});
     }
 
     destroy() {}

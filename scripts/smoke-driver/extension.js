@@ -119,6 +119,9 @@ export default class SmokeDriver extends Extension {
             await sleep(1500);
             if (!indicator())
                 throw new Error('indicator missing after re-enable');
+            // The last tab the user clicked (docker) must survive re-enable.
+            if (indicator()._deck._active !== 'docker')
+                throw new Error(`last tab lost on re-enable: ${indicator()._deck._active}`);
             indicator().menu.open();
             await sleep(800);
             indicator().menu.close();

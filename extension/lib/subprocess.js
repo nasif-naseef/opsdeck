@@ -15,7 +15,10 @@ Gio._promisify(Gio.File.prototype, 'load_contents_async');
 const FALLBACK_DIRS = ['/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
 const _whichCache = new Map();
 
-/** Absolute path of an executable, or null. */
+/**
+ * Absolute path of an executable, or null. Only hits are cached, so a tool
+ * installed after login (docker, nvidia-smi, ...) is picked up on next use.
+ */
 export function which(name) {
     if (_whichCache.has(name))
         return _whichCache.get(name);
@@ -25,7 +28,8 @@ export function which(name) {
             .map(dir => `${dir}/${name}`)
             .find(p => GLib.file_test(p, GLib.FileTest.IS_EXECUTABLE)) ?? null;
     }
-    _whichCache.set(name, path);
+    if (path)
+        _whichCache.set(name, path);
     return path;
 }
 
@@ -110,16 +114,13 @@ export async function readText(path, cancellable = null) {
     }
 }
 
-/** UID owning a process, or null if the process is gone or unreadable. */
-export async function processUid(pid, cancellable = null) {
-    const status = await readText(`/proc/${pid}/status`, cancellable);
-    const match = status?.match(/^Uid:\s+(\d+)/m);
-    return match ? Number(match[1]) : null;
-}
+let _self = null;
 
-export function processExists(pid) {
-    return GLib.file_test(`/proc/${pid}`, GLib.FileTest.EXISTS);
+/** {uid, pid} of gnome-shell itself, resolved on first use (not at import). */
+export function self() {
+    if (!_self) {
+        const c = new Gio.Credentials();
+        _self = {uid: c.get_unix_user(), pid: c.get_unix_pid()};
+    }
+    return _self;
 }
-
-export const MY_UID = new Gio.Credentials().get_unix_user();
-export const MY_PID = new Gio.Credentials().get_unix_pid();

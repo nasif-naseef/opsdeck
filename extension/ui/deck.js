@@ -112,9 +112,12 @@ export class Deck {
             hub.connect('changed', id => this._onChanged(id)),
             hub.connect('enabled-changed', () => this._syncNav()),
         ];
+        // The tab the user last chose. It is only ever written on a click, so
+        // falling back while sources are still starting up (or disabled)
+        // never overwrites it.
+        const saved = settings.get_string('last-tab');
+        this._wanted = SOURCE_IDS.includes(saved) ? saved : SOURCE_IDS[0];
         this._syncNav();
-        this.select(SOURCE_IDS.includes(settings.get_string('last-tab'))
-            ? settings.get_string('last-tab') : 'claude');
     }
 
     _makeNavButton(id) {
@@ -135,12 +138,23 @@ export class Deck {
         return {actor, badge};
     }
 
+    /** User picked a tab: remember it and show it. */
     select(id) {
-        if (!this._hub.state[id].enabled)
-            id = SOURCE_IDS.find(s => this._hub.state[s].enabled) ?? id;
-        this._active = id;
+        this._wanted = id;
         if (this._settings.get_string('last-tab') !== id)
             this._settings.set_string('last-tab', id);
+        this._show(this._effectiveTab());
+    }
+
+    /** The wanted tab if its module is on, else the first enabled one. */
+    _effectiveTab() {
+        if (this._hub.state[this._wanted].enabled)
+            return this._wanted;
+        return SOURCE_IDS.find(s => this._hub.state[s].enabled) ?? this._wanted;
+    }
+
+    _show(id) {
+        this._active = id;
         for (const sid of SOURCE_IDS) {
             this._views[sid].actor.visible = sid === id;
             if (sid === id)
@@ -223,8 +237,10 @@ export class Deck {
             this._navButtons[id].actor.visible = this._hub.state[id].enabled;
             this._updateBadge(id);
         }
-        if (this._active && !this._hub.state[this._active].enabled)
-            this.select(this._active);
+        // Follow modules turning on/off without touching the saved choice.
+        const tab = this._effectiveTab();
+        if (tab !== this._active)
+            this._show(tab);
     }
 
     async _runAction(id, key, fn) {

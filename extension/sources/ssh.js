@@ -9,10 +9,13 @@ import GLib from 'gi://GLib';
 import {parseUsers, splitHostPort} from '../lib/sockets.js';
 import {CancelledError} from '../lib/scope.js';
 import {SourceError, actionResult} from '../lib/source.js';
-import {MY_UID, processExists, processUid, readText, run, which} from '../lib/subprocess.js';
+import {escalate, procInfo, signalBlocker, signalLadder} from '../lib/process.js';
+import {run, which} from '../lib/subprocess.js';
 import {matchesQuery} from '../lib/format.js';
 
 const TTY_RE = /^(pts\/\d+|tty\d+)$/;
+// ssh clients and shells exit cleanly on hangup; escalate only if they don't.
+const SSH_SIGNALS = ['HUP', 'TERM', 'KILL'];
 // OpenSSH client options that consume an argument.
 const SSH_OPTS_WITH_ARG = new Set('BbcDEeFIiJLlmOoPpQRSWw');
 
@@ -242,14 +245,9 @@ export class SshSource {
 
         const outgoing = s?.ok ? parseEstablished(s.stdout) : [];
         await Promise.all(outgoing.map(async session => {
-            const [cmdline, uid] = await Promise.all([
-                readText(`/proc/${session.pid}/cmdline`, this._scope.cancellable),
-                processUid(session.pid, this._scope.cancellable),
-            ]);
-            session.own = uid === MY_UID;
-            const {target, forwards} = cmdline
-                ? parseSshArgs(cmdline.split('\0').filter(Boolean))
-                : {target: null, forwards: []};
+            const info = await procInfo(session.pid, this._scope.cancellable);
+            session.own = signalBlocker(info, {expectComm: 'ssh'}) === null;
+            const {target, forwards} = info ? parseSshArgs(info.argv) : {target: null, forwards: []};
             if (target)
                 session.target = target;
             session.forwards = forwards;
@@ -276,36 +274,21 @@ export class SshSource {
             return actionResult(false, '`pkill`/`pgrep` not installed');
         if (!TTY_RE.test(tty))
             return actionResult(false, `Refusing unexpected TTY "${tty}"`);
-        const alive = async () =>
-            (await run([pgrep, '-u', this._me, '-t', tty], {cancellable: this._scope.cancellable})).ok;
-        return this._escalate(
-            sig => run([pkill, `-${sig}`, '-u', this._me, '-t', tty], {cancellable: this._scope.cancellable}),
-            alive, `session on ${tty}`);
+        // A login session is a process tree on its tty; pkill -u me -t only
+        // reaches our own processes on it.
+        const opts = {cancellable: this._scope.cancellable};
+        return escalate({
+            signals: SSH_SIGNALS,
+            scope: this._scope,
+            what: `session on ${tty}`,
+            send: sig => run([pkill, `-${sig}`, '-u', this._me, '-t', tty], opts),
+            alive: async () => (await run([pgrep, '-u', this._me, '-t', tty], opts)).ok,
+        });
     }
 
-    async _endPid(pid) {
-        const kill = which('kill');
-        if (!kill)
-            return actionResult(false, '`kill` not installed');
-        if (await processUid(pid, this._scope.cancellable) !== MY_UID)
-            return actionResult(false, `PID ${pid} is not yours`);
-        return this._escalate(
-            sig => run([kill, `-${sig}`, String(pid)], {cancellable: this._scope.cancellable}),
-            async () => processExists(pid), `ssh (PID ${pid})`);
-    }
-
-    /** SIGHUP → SIGTERM → SIGKILL, stopping as soon as the target is gone. */
-    async _escalate(send, alive, what) {
-        for (const sig of ['HUP', 'TERM', 'KILL']) {
-            const r = await send(sig);
-            // pkill exits 1 when nothing matched, i.e. already gone.
-            if (!r.ok && r.status !== 1)
-                return actionResult(false, r.stderr.trim() || `SIG${sig} failed`);
-            await this._scope.sleep(sig === 'KILL' ? 300 : 800);
-            if (!await alive())
-                return actionResult(true, `Ended ${what}`);
-        }
-        return actionResult(false, `Could not end ${what}`);
+    _endPid(pid) {
+        // Re-validated against /proc before each signal: still ours, still ssh.
+        return signalLadder(pid, this._scope, {signals: SSH_SIGNALS, expectComm: 'ssh'});
     }
 
     destroy() {}
