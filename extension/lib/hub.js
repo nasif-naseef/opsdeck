@@ -5,7 +5,8 @@
 //
 // Source contract (duck-typed):
 //   fetch({force})          → data            required, cheap, runs on every poll
-//   count(data, settings)   → number          required, for top-bar counters
+//   count(data, settings)   → number          one of these two, for the top bar:
+//   gauge(data, settings)   → {value, unit, level} | null   (a % or °, not a count)
 //   fetchDetails()          → details         optional, expensive, only while the
 //   detailsGapMs            number            source's tab is on screen
 //   displayKeys             string[]          settings that only need a re-render
@@ -71,29 +72,23 @@ export class Hub extends Emitter {
             this._applyEnabled(id);
     }
 
-    /** Value for the top-bar counter, or null when there is nothing to show. */
-    count(id) {
+    /**
+     * What the top-bar counter and nav badge show for a source, or null when
+     * there is nothing to show yet.
+     *
+     * @returns {{value: number, text: string, level: string|null, gauge: boolean} | null}
+     */
+    display(id) {
         const s = this.state[id];
         if (!s.enabled || s.data === null)
             return null;
-        return this.sources[id].count(s.data, this._settings);
-    }
-
-    /**
-     * Gauge sources (a percentage or temperature, not a count) format their
-     * own value and say how close to a limit it is.
-     */
-    isGauge(id) {
-        return typeof this.sources[id].formatCount === 'function';
-    }
-
-    format(id, value) {
-        return this.isGauge(id) ? this.sources[id].formatCount(value, this._settings) : String(value);
-    }
-
-    /** 'ok' | 'warn' | 'critical' for gauges, null for counts. */
-    level(id, value) {
-        return this.sources[id].level?.(value, this._settings) ?? null;
+        const source = this.sources[id];
+        if (source.gauge) {
+            const g = source.gauge(s.data, this._settings);
+            return g && {value: g.value, text: `${g.value}${g.unit}`, level: g.level, gauge: true};
+        }
+        const n = source.count(s.data, this._settings);
+        return {value: n, text: String(n), level: null, gauge: false};
     }
 
     /** The source whose tab is on screen (or null): only it fetches details. */

@@ -20,7 +20,8 @@ import {inRange, matchesPort, parseListening} from '../extension/sources/ports.j
 import {parseEstablished, parseSshArgs, parseSshTarget, parseWho} from '../extension/sources/ssh.js';
 import {classifyDockerError, hostPortIndex, parseContainers, parseLabels, parsePublished, parseStats,
     publishedPorts} from '../extension/sources/docker.js';
-import {panelPercent, parseCredentials, parseUsage} from '../extension/sources/claude.js';
+import {ClaudeSource, panelPercent, parseCredentials, parseUsage} from '../extension/sources/claude.js';
+import {SystemSource} from '../extension/sources/system.js';
 
 const here = GLib.path_get_dirname(GLib.filename_from_uri(import.meta.url)[0]);
 const fixture = name => new TextDecoder().decode(
@@ -473,10 +474,45 @@ async function asyncTests() {
         test('Hub drops in-flight results and details when a source is disabled', () => {
             eq(hub.state.ports.data, null);
             eq(hub.state.ports.details, null);
-            eq(hub.count('ports'), null);
+            eq(hub.display('ports'), null);
         });
         hub.destroy();
         hubScope.dispose();
+    }
+
+    // ── hub.display(): one model for counts and gauges ─────────────────────
+    {
+        const sc = new Scope();
+        const str = v => ({get_string: () => v});
+        const sys = new SystemSource(sc);
+        const data = {cpu: {total: 72.4}, memPct: 41.6, cpuTemp: 91};
+        test('System gauge: cpu / memory / temp with matching unit and level', () => {
+            eq(sys.gauge(data, str('cpu')), {value: 72, unit: '%', level: 'warn'});
+            eq(sys.gauge(data, str('memory')), {value: 42, unit: '%', level: 'ok'});
+            eq(sys.gauge(data, str('temp')), {value: 91, unit: '°', level: 'critical'});
+            eq(sys.gauge({...data, cpuTemp: null}, str('temp')), {value: 72, unit: '%', level: 'warn'});
+        });
+        const claude = new ClaudeSource(sc);
+        const usage = {windows: parseUsage({five_hour: {utilization: 95}, seven_day: {utilization: 10}})};
+        test('Claude gauge follows the window preference', () => {
+            eq(claude.gauge(usage, str('5h')), {value: 95, unit: '%', level: 'critical'});
+            eq(claude.gauge(usage, str('7d')), {value: 10, unit: '%', level: 'ok'});
+            eq(claude.gauge({windows: []}, str('max')), null);
+        });
+        const settings = fakeSettings({'enable-ports': true, 'enable-system': true});
+        const sources = makeSources({fetch: async () => [1, 2, 3], count: d => d.length});
+        sources.system = {fetch: async () => data, gauge: (d, st) => sys.gauge(d, st)};
+        const hub = new Hub({...settings, get_string: () => 'temp'}, sc, sources);
+        hub.start();
+        await tick(); await tick();
+        test('hub.display: counts and gauges share one shape', () => {
+            eq(hub.display('ports'), {value: 3, text: '3', level: null, gauge: false});
+            eq(hub.display('system'), {value: 91, text: '91°', level: 'critical', gauge: true});
+            eq(hub.display('docker'), null); // disabled
+        });
+        hub.destroy();
+        claude.destroy();
+        sc.dispose();
     }
     scope.dispose();
 }

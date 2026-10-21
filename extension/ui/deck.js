@@ -217,20 +217,19 @@ export class Deck {
         else if (!s.updatedAt)
             this._subtitle.text = s.error ? 'Unavailable' : 'Waiting for first update';
         else
-            this._subtitle.text = `Updated ${formatAgo(s.updatedAt)}${s.loading ? ' · refreshing' : ''}`;
+            this._subtitle.text = `Updated ${formatAgo(s.data?.fetchedAt ?? s.updatedAt)}${s.loading ? ' · refreshing' : ''}`;
     }
 
     _updateBadge(id) {
         const {badge} = this._navButtons[id];
-        const value = this._hub.count(id);
-        badge.visible = value !== null && (value !== 0 || this._hub.isGauge(id));
+        const d = this._hub.display(id);
+        badge.visible = d !== null && (d.gauge || d.value !== 0);
         badge.style_class = 'opsdeck-nav-badge';
-        if (value === null)
+        if (!badge.visible)
             return;
-        badge.text = this._hub.format(id, value);
-        const level = this._hub.level(id, value);
-        if (level && level !== 'ok')
-            badge.add_style_class_name(`opsdeck-level-${level}`);
+        badge.text = d.text;
+        if (d.level && d.level !== 'ok')
+            badge.add_style_class_name(`opsdeck-level-${d.level}`);
     }
 
     _syncNav() {

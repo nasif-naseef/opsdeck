@@ -105,6 +105,8 @@ export class ClaudeSource {
         /** @type {ClaudeUsage|null} */
         this._last = null;
         this._lastAttempt = 0;
+        /** @type {SourceError|null} last API failure, replayed while backing off */
+        this._lastError = null;
         // A token the API rejected; don't retry it until Claude Code replaces it.
         this._rejectedToken = null;
     }
@@ -112,8 +114,14 @@ export class ClaudeSource {
     async fetch({force = false} = {}) {
         const now = Date.now();
         const gap = force ? MIN_FORCED_GAP_MS : MIN_FETCH_GAP_MS;
-        if (this._last && now - this._lastAttempt < gap)
-            return this._last;
+        // Back off between API calls whether or not the last one succeeded,
+        // so a failing or rate-limited endpoint isn't hit on every menu open.
+        if (now - this._lastAttempt < gap) {
+            if (this._last)
+                return this._last;
+            if (this._lastError)
+                throw this._lastError;
+        }
 
         const creds = parseCredentials(await readText(credentialsPath(), this._scope.cancellable), now);
         if (creds.state === 'signed-out') {
@@ -150,20 +158,14 @@ export class ClaudeSource {
             return this._staleOr('error', new SourceError('error', 'Unexpected response from usage API'));
         }
         this._rejectedToken = null;
+        this._lastError = null;
         this._last = {windows: parseUsage(json), fetchedAt: Date.now(), stale: null};
         return this._last;
     }
 
-    count(usage, settings) {
-        return panelPercent(usage.windows, settings.get_string('claude-panel-window'));
-    }
-
-    formatCount(value) {
-        return `${value}%`;
-    }
-
-    level(value) {
-        return usageLevel(value);
+    gauge(usage, settings) {
+        const pct = panelPercent(usage.windows, settings.get_string('claude-panel-window'));
+        return pct === null ? null : {value: pct, unit: '%', level: usageLevel(pct)};
     }
 
     async _get(token) {
@@ -193,6 +195,7 @@ export class ClaudeSource {
     }
 
     _staleOr(reason, error) {
+        this._lastError = error;
         if (!this._last)
             throw error;
         this._last = {...this._last, stale: reason};

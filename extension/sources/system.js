@@ -273,23 +273,15 @@ export class SystemSource {
         return rows;
     }
 
-    count(data, settings) {
+    gauge(data, settings) {
         const pref = settings.get_string('system-panel-metric');
         // Machines without a readable CPU sensor fall back to CPU %.
-        this._unit = pref === 'temp' && data.cpuTemp !== null ? '°' : '%';
-        if (this._unit === '°')
-            return data.cpuTemp;
-        return Math.round(pref === 'memory' ? data.memPct : data.cpu.total);
-    }
-
-    formatCount(value) {
-        return `${value}${this._unit ?? '%'}`;
-    }
-
-    level(value) {
-        if (this._unit === '°')
-            return value >= 90 ? 'critical' : value >= 80 ? 'warn' : 'ok';
-        return usageLevel(value);
+        if (pref === 'temp' && data.cpuTemp !== null) {
+            const t = data.cpuTemp;
+            return {value: t, unit: '°', level: t >= 90 ? 'critical' : t >= 80 ? 'warn' : 'ok'};
+        }
+        const pct = Math.round(pref === 'memory' ? data.memPct : data.cpu.total);
+        return {value: pct, unit: '%', level: usageLevel(pct)};
     }
 
     /** @param {{pid: number, command: string}} proc - as listed, so a recycled PID is refused */

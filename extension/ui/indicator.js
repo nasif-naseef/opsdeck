@@ -93,18 +93,18 @@ class OpsDeckIndicator extends PanelMenu.Button {
 
     _updateCounter(id) {
         const {actor, text} = this._counters[id];
-        const value = this._hub.count(id);
+        const d = this._hub.display(id);
+        // A gauge at 0% is still information; an empty count is not.
         const show = this._settings.get_boolean('show-panel-counters') &&
             this._settings.get_boolean(`show-${id}-counter`) &&
-            value !== null &&
-            !(value === 0 && this._settings.get_boolean('hide-zero-counters'));
+            d !== null &&
+            (d.gauge || d.value !== 0 || !this._settings.get_boolean('hide-zero-counters'));
         actor.visible = show;
         if (show) {
-            text.text = this._hub.format(id, value);
+            text.text = d.text;
             actor.style_class = 'opsdeck-counter';
-            const level = this._hub.level(id, value);
-            if (level)
-                actor.add_style_class_name(`opsdeck-level-${level}`);
+            if (d.level)
+                actor.add_style_class_name(`opsdeck-level-${d.level}`);
         }
         // Never leave an empty button in the top bar.
         this._fallbackIcon.visible = SOURCE_IDS.every(sid => !this._counters[sid].actor.visible);

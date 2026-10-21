@@ -6,6 +6,8 @@ import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {usageLevel} from '../lib/format.js';
+
 export function vbox(props = {}) {
     return new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, ...props});
 }
@@ -171,7 +173,7 @@ export function coreStrip(percents) {
     const height = 22;
     const width = Math.max(2, Math.min(8, Math.floor(380 / Math.max(1, percents.length)) - 2));
     for (const pct of percents) {
-        const level = pct >= 90 ? 'critical' : pct >= 70 ? 'warn' : 'ok';
+        const level = usageLevel(pct);
         // Spacer on top, fill at the bottom.
         const track = vbox({style_class: 'opsdeck-core', width, height});
         track.add_child(new St.Widget({y_expand: true}));
