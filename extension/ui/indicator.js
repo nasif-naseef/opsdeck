@@ -4,6 +4,7 @@
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
@@ -17,8 +18,12 @@ import {hbox} from './widgets.js';
 const COUNTER_SETTINGS = ['show-panel-counters', 'hide-zero-counters',
     ...SOURCE_IDS.map(id => `show-${id}-counter`)];
 
-export const OpsDeckIndicator = GObject.registerClass(
-class OpsDeckIndicator extends PanelMenu.Button {
+// GObject type names are process-wide and can never be unregistered. A name
+// unique to this load lets a newer copy of OpsDeck be loaded into a running
+// shell (`make reload`) without colliding with the copy loaded before it.
+export const OpsDeckIndicator = GObject.registerClass({
+    GTypeName: `OpsDeckIndicator_${GLib.uuid_string_random().replaceAll('-', '')}`,
+}, class OpsDeckIndicator extends PanelMenu.Button {
     /**
      * @param {object} o
      * @param {import('resource:///org/gnome/shell/extensions/extension.js').Extension} o.extension

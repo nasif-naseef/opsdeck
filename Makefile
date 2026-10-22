@@ -2,7 +2,7 @@ UUID := $(shell python3 -c 'import json;print(json.load(open("extension/metadata
 ZIP  := dist/$(UUID).shell-extension.zip
 SRCS := $(shell find extension -type f ! -name gschemas.compiled)
 
-.PHONY: all lint test pack install uninstall smoke screenshots prefs log clean
+.PHONY: all lint test pack install reload uninstall smoke screenshots prefs log clean
 
 all: lint test pack
 
@@ -28,6 +28,9 @@ $(ZIP): $(SRCS)
 install: pack
 	gnome-extensions install --force $(ZIP)
 	@echo "Installed $(UUID). On Wayland, log out and back in, then: gnome-extensions enable $(UUID)"
+
+reload: pack
+	scripts/reload.sh $(ZIP)
 
 uninstall:
 	gnome-extensions uninstall $(UUID)

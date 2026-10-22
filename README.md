@@ -23,6 +23,8 @@ make install        # pack and install into ~/.local/share/gnome-shell/extension
 gnome-extensions enable opsdeck@nasif-naseef.github.io
 ```
 
+To update a running OpsDeck without logging out, run `make reload` and paste the line it prints into Looking Glass (Alt+F2 → `lg`). It loads the new build from a fresh folder, because GNOME Shell caches loaded code by file path.
+
 ## Develop
 
 ```sh
