@@ -15,10 +15,12 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 const TARGET = GLib.getenv('OPSDECK_UUID');
 const SHOTS = GLib.getenv('OPSDECK_SHOTS');
 
-const sleep = ms => new Promise(r => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
-    r();
-    return GLib.SOURCE_REMOVE;
-}));
+const sleep = ms => new Promise(r => {
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+        r();
+        return GLib.SOURCE_REMOVE;
+    });
+});
 
 function screenshot(name) {
     if (!SHOTS)

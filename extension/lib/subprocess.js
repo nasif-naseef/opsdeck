@@ -138,6 +138,7 @@ export async function launchInTerminal(cmd, scope) {
         const exited = proc.wait_async(null).then(() => true, () => true);
         if (!DISPATCHERS.has(bin))
             return actionResult(true, `Opened in ${bin}`);
+        // eslint-disable-next-line no-await-in-loop -- terminals are tried strictly in order
         const quickExit = await Promise.race([exited, scope.sleep(EARLY_FAILURE_MS).then(() => false)]);
         // Still running: a terminal is open. Exited 0: it handed off to a
         // terminal server (gnome-terminal, ptyxis). Exited non-zero: next.

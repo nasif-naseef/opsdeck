@@ -8,7 +8,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 
 const MODULES = [
     {id: 'claude', title: 'Claude Usage', icon: 'claude',
-        subtitle: 'Plan limits of the account Claude Code is signed in with. Reads the token read-only and never modifies it.'},
+        subtitle: 'Off by default. Shows the plan limits of the account Claude Code is signed in with: reads ~/.claude/.credentials.json (never modifies it) and sends the token only to api.anthropic.com.'},
     {id: 'system', title: 'System', icon: 'system',
         subtitle: 'CPU, memory, disks, network, temperature, GPU, battery and top processes of this machine.'},
     {id: 'ports', title: 'Listening Ports', icon: 'ports',

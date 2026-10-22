@@ -37,6 +37,9 @@ export OPSDECK_UUID="$UUID" OPSDECK_SHOTS="${2:-}" LOG DRIVER
 dbus-run-session -- bash -euo pipefail -c '
     gsettings set org.gnome.shell disable-user-extensions false
     gsettings set org.gnome.shell enabled-extensions "[\"$OPSDECK_UUID\", \"$DRIVER\"]"
+    # Claude is opt-in; turn it on here so its tab (signed-out path) is covered.
+    gsettings --schemadir "$XDG_DATA_HOME/gnome-shell/extensions/$OPSDECK_UUID/schemas" \
+        set org.gnome.shell.extensions.opsdeck enable-claude true
     gnome-shell --headless --wayland --no-x11 --virtual-monitor 1600x1000 >"$LOG" 2>&1 &
     SHELL_PID=$!
     for _ in $(seq 120); do

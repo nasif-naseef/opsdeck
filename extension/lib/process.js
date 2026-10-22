@@ -83,6 +83,7 @@ export async function canSignal(pid, scope, opts = {}) {
  * @param {string} o.what - for messages, e.g. "PID 4242"
  */
 export async function escalate({signals, send, alive, scope, what}) {
+    /* eslint-disable no-await-in-loop -- each signal must wait for the previous one to take effect */
     for (const sig of signals) {
         const r = await send(sig);
         // pkill exits 1 when nothing matched, i.e. the target is already gone.
@@ -96,6 +97,7 @@ export async function escalate({signals, send, alive, scope, what}) {
                 return actionResult(true, `Stopped ${what}`);
         }
     }
+    /* eslint-enable no-await-in-loop */
     return actionResult(false, `${what} is still running`);
 }
 

@@ -428,7 +428,12 @@ async function asyncTests() {
     const deferred = () => { let resolve; const p = new Promise(r => { resolve = r; }); return {p, resolve}; };
     const makeSources = ports => Object.fromEntries(SOURCE_IDS.map(id => [id,
         id === 'ports' ? ports : {fetch: async () => null, count: () => 0}]));
-    const tick = () => new Promise(r => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { r(); return GLib.SOURCE_REMOVE; }));
+    const tick = () => new Promise(r => {
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            r();
+            return GLib.SOURCE_REMOVE;
+        });
+    });
 
     {
         const hubScope = new Scope();

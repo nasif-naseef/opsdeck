@@ -1,8 +1,10 @@
 {
   "uuid": "opsdeck@nasif-naseef.github.io",
   "name": "OpsDeck",
-  "description": "Your dev machine at a glance: listening ports, SSH sessions, Docker containers and Claude plan usage in one top-bar menu, with kill, end, start/stop/restart and shell actions.",
-  "shell-version": ["48", "49", "50"],
+  "description": "Your dev machine at a glance: system metrics, listening ports, SSH sessions and tunnels, and Docker containers in one top-bar menu, with kill, end, start/stop/restart, logs and shell actions.\n\nCopy buttons write to the clipboard (only when clicked).\n\nOptional, off by default: Claude plan usage. When enabled it reads the Claude Code login in ~/.claude/.credentials.json (read-only, never modified) and sends that token only to api.anthropic.com to fetch your usage limits.",
+  "shell-version": [
+    "50"
+  ],
   "url": "https://github.com/nasif-naseef/opsdeck",
   "settings-schema": "org.gnome.shell.extensions.opsdeck",
   "version-name": "1.0.0"

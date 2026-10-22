@@ -2,9 +2,12 @@ UUID := $(shell python3 -c 'import json;print(json.load(open("extension/metadata
 ZIP  := dist/$(UUID).shell-extension.zip
 SRCS := $(shell find extension -type f ! -name gschemas.compiled)
 
-.PHONY: all test pack install uninstall smoke prefs log clean
+.PHONY: all lint test pack install uninstall smoke prefs log clean
 
-all: test pack
+all: lint test pack
+
+lint:
+	npx eslint extension tests scripts eslint.config.js
 
 test:
 	gjs -m tests/run.js

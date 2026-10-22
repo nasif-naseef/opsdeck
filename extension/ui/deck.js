@@ -121,7 +121,7 @@ export class Deck {
         // falling back while sources are still starting up (or disabled)
         // never overwrites it.
         const saved = settings.get_string('last-tab');
-        this._wanted = SOURCE_IDS.includes(saved) ? saved : SOURCE_IDS[0];
+        this._wanted = SOURCE_IDS.includes(saved) ? saved : 'system';
         this._syncNav();
     }
 

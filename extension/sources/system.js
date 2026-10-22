@@ -198,6 +198,8 @@ export class SystemSource {
         return out.filter(d => d && d.size > 0);
     }
 
+    /* eslint-disable no-await-in-loop -- one GPU at a time: the NVIDIA power
+       state must be read before deciding whether nvidia-smi may run */
     async _gpuStats() {
         this._gpus ??= discoverGpus();
         const read = p => readText(p, this._scope.cancellable);
@@ -238,6 +240,7 @@ export class SystemSource {
         }
         return out;
     }
+    /* eslint-enable no-await-in-loop */
 
     async _battery() {
         // Discovered once (sync sysfs listing); laptops don't grow batteries.

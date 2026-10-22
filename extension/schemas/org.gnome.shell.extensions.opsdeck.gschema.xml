@@ -34,7 +34,7 @@
 
     <!-- Modules -->
     <key name="enable-claude" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Enable the Claude usage module</summary>
       <description>When disabled, OpsDeck never reads Claude Code credentials or contacts the network.</description>
     </key>
@@ -127,7 +127,7 @@
 
     <!-- UI state -->
     <key name="last-tab" type="s">
-      <default>'claude'</default>
+      <default>'system'</default>
       <summary>Tab shown when the menu opens</summary>
     </key>
   </schema>

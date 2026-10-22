@@ -1,0 +1,13 @@
+{
+  "name": "opsdeck",
+  "private": true,
+  "type": "module",
+  "description": "Dev tooling only; nothing here ships in the extension zip.",
+  "scripts": {
+    "lint": "eslint extension tests scripts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5"
+  }
+}
