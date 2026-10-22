@@ -1,0 +1,6 @@
+{
+  "uuid": "opsdeck-screenshot-driver@local",
+  "name": "OpsDeck screenshot driver",
+  "description": "Test-only. Feeds OpsDeck made-up data inside a sandboxed headless shell and screenshots every tab. Never installed for real.",
+  "shell-version": ["50"]
+}

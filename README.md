@@ -2,6 +2,8 @@
 
 A GNOME Shell 50 top-bar menu for your dev machine:
 
+![OpsDeck: System, Ports and Docker tabs](docs/screenshots/overview.png)
+
 
 - **Claude** (off by default, enable in Settings): plan usage (5-hour and weekly limits) for the account Claude Code is signed in with. The token in `~/.claude/.credentials.json` is only ever read, never refreshed or written, and is sent only to `api.anthropic.com`.
 - **System**: this machine's CPU (with history and a per-core strip), memory and swap, temperature, GPUs, network rates, disks, battery and top processes. It covers what Termix's Host Metrics plugin shows, read locally from `/proc` and `/sys`. Disks, GPU, battery and processes are only read while the tab is open. A sleeping NVIDIA dGPU is never woken by polling. The top bar can show CPU %, memory % or CPU temperature.
@@ -27,6 +29,7 @@ gnome-extensions enable opsdeck@nasif-naseef.github.io
 npm install # once: ESLint (dev only, never shipped)
 make lint   # ESLint with the gjs.guide rules
 make test   # parser unit tests (gjs) and schema validation
+make screenshots  # store screenshots with made-up data → docs/screenshots/
 make smoke  # headless sandboxed gnome-shell: open every tab, cycle enable/disable 3x, fail on JS errors
 make log    # follow OpsDeck messages in the journal
 ```
