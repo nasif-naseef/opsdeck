@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 //
 // Hub: owns polling and the latest state of every source. The UI only reads
-// `hub.state[id]` and listens for events; it never fetches.
+// `hub.state[sourceId]` and listens for events; it never fetches.
 //
 // Source contract (duck-typed):
 //   fetch({force})          → data            required, cheap, runs on every poll
 //   count(data, settings)   → number          one of these two, for the top bar:
 //   gauge(data, settings)   → {value, unit, level} | null   (a % or °, not a count)
 //   fetchDetails()          → details         optional, expensive, only while the
-//   detailsGapMs            number            source's tab is on screen
+//   detailsGapMs            number            source'sourceState tab is on screen
 //   displayKeys             string[]          settings that only need a re-render
 //
-// Events: 'loading' (id) when a fetch starts, 'changed' (id) when state[id]
-// changed, 'enabled-changed' (id).
+// Events: 'loading' (sourceId) when a fetch starts, 'changed' (sourceId) when state[sourceId]
+// changed, 'enabled-changed' (sourceId).
 
 import {Emitter} from './emitter.js';
 import {CancelledError} from './scope.js';
@@ -53,23 +53,23 @@ export class Hub extends Emitter {
         this._details = {};
         /** @type {Record<string, SourceState>} */
         this.state = {};
-        for (const id of SOURCE_IDS) {
-            this.state[id] = {enabled: false, loading: false, data: null, error: null, updatedAt: 0, details: null};
-            this._generation[id] = 0;
-            this._details[id] = {inflight: false, at: 0, generation: 0};
+        for (const sourceId of SOURCE_IDS) {
+            this.state[sourceId] = {enabled: false, loading: false, data: null, error: null, updatedAt: 0, details: null};
+            this._generation[sourceId] = 0;
+            this._details[sourceId] = {inflight: false, at: 0, generation: 0};
         }
 
-        this._settingsIds = SOURCE_IDS.flatMap(id => [
-            settings.connect(`changed::enable-${id}`, () => this._applyEnabled(id)),
-            settings.connect(`changed::refresh-interval-${id}`, () => this._schedule(id)),
-            ...(sources[id].displayKeys ?? []).map(k =>
-                settings.connect(`changed::${k}`, () => this.emit('changed', id))),
+        this._settingsIds = SOURCE_IDS.flatMap(sourceId => [
+            settings.connect(`changed::enable-${sourceId}`, () => this._applyEnabled(sourceId)),
+            settings.connect(`changed::refresh-interval-${sourceId}`, () => this._schedule(sourceId)),
+            ...(sources[sourceId].displayKeys ?? []).map(key =>
+                settings.connect(`changed::${key}`, () => this.emit('changed', sourceId))),
         ]);
     }
 
     start() {
-        for (const id of SOURCE_IDS)
-            this._applyEnabled(id);
+        for (const sourceId of SOURCE_IDS)
+            this._applyEnabled(sourceId);
     }
 
     /**
@@ -81,139 +81,139 @@ export class Hub extends Emitter {
      *
      * @returns {{value: number, text: string, level: string|null, quiet: boolean} | null}
      */
-    display(id) {
-        const s = this.state[id];
-        if (!s.enabled || s.data === null)
+    display(sourceId) {
+        const sourceState = this.state[sourceId];
+        if (!sourceState.enabled || sourceState.data === null)
             return null;
-        const source = this.sources[id];
+        const source = this.sources[sourceId];
         if (source.gauge) {
-            const g = source.gauge(s.data, this._settings);
-            return g && {value: g.value, text: `${g.value}${g.unit}`, level: g.level, quiet: false};
+            const gauge = source.gauge(sourceState.data, this._settings);
+            return gauge && {value: gauge.value, text: `${gauge.value}${gauge.unit}`, level: gauge.level, quiet: false};
         }
-        const n = source.count(s.data, this._settings);
-        return {value: n, text: String(n), level: null, quiet: n === 0};
+        const count = source.count(sourceState.data, this._settings);
+        return {value: count, text: String(count), level: null, quiet: count === 0};
     }
 
     /** The source whose tab is on screen (or null): only it fetches details. */
-    setVisible(id) {
-        if (this._visible === id)
+    setVisible(sourceId) {
+        if (this._visible === sourceId)
             return;
-        this._visible = id;
-        if (id)
-            this._refreshDetails(id);
+        this._visible = sourceId;
+        if (sourceId)
+            this._refreshDetails(sourceId);
     }
 
     refreshAll({force = false} = {}) {
-        for (const id of SOURCE_IDS)
-            this.refresh(id, {force});
+        for (const sourceId of SOURCE_IDS)
+            this.refresh(sourceId, {force});
     }
 
-    async refresh(id, {force = false} = {}) {
-        const s = this.state[id];
-        if (!s.enabled || this._scope.disposed)
+    async refresh(sourceId, {force = false} = {}) {
+        const sourceState = this.state[sourceId];
+        if (!sourceState.enabled || this._scope.disposed)
             return;
-        if (this._inflight[id]) {
+        if (this._inflight[sourceId]) {
             // Never run two fetches of one source at once; a forced request
             // during a fetch queues exactly one follow-up instead.
-            this._again[id] ||= force;
+            this._again[sourceId] ||= force;
             return;
         }
-        const gen = ++this._generation[id];
-        this._inflight[id] = true;
-        s.loading = true;
-        this.emit('loading', id);
+        const generation = ++this._generation[sourceId];
+        this._inflight[sourceId] = true;
+        sourceState.loading = true;
+        this.emit('loading', sourceId);
 
         try {
-            const data = await this.sources[id].fetch({force});
-            if (gen !== this._generation[id] || this._scope.disposed)
+            const data = await this.sources[sourceId].fetch({force});
+            if (generation !== this._generation[sourceId] || this._scope.disposed)
                 return;
-            Object.assign(s, {data, error: null, updatedAt: Date.now()});
-        } catch (e) {
-            if (gen !== this._generation[id] || this._scope.disposed || e instanceof CancelledError)
+            Object.assign(sourceState, {data, error: null, updatedAt: Date.now()});
+        } catch (error) {
+            if (generation !== this._generation[sourceId] || this._scope.disposed || error instanceof CancelledError)
                 return;
-            if (!(e instanceof SourceError))
-                console.error(`[OpsDeck] ${id} refresh failed: ${e.stack ?? e}`);
-            s.error = e instanceof SourceError ? e : new SourceError('error', String(e.message ?? e));
-            if (CLEARS_DATA.has(s.error.kind))
-                s.data = null;
+            if (!(error instanceof SourceError))
+                console.error(`[OpsDeck] ${sourceId} refresh failed: ${error.stack ?? error}`);
+            sourceState.error = error instanceof SourceError ? error : new SourceError('error', String(error.message ?? error));
+            if (CLEARS_DATA.has(sourceState.error.kind))
+                sourceState.data = null;
         } finally {
-            if (gen === this._generation[id] && !this._scope.disposed) {
-                this._inflight[id] = false;
-                s.loading = false;
-                if (this._visible === id && s.data !== null)
-                    this._refreshDetails(id);
-                if (this._again[id]) {
-                    this._again[id] = false;
-                    this.refresh(id, {force: true});
+            if (generation === this._generation[sourceId] && !this._scope.disposed) {
+                this._inflight[sourceId] = false;
+                sourceState.loading = false;
+                if (this._visible === sourceId && sourceState.data !== null)
+                    this._refreshDetails(sourceId);
+                if (this._again[sourceId]) {
+                    this._again[sourceId] = false;
+                    this.refresh(sourceId, {force: true});
                 }
                 // Last, and even when nothing new arrived (a cancelled fetch),
                 // so the "refreshing" note always clears. Emitter isolates
                 // handler exceptions, so the follow-ups above always run.
-                this.emit('changed', id);
+                this.emit('changed', sourceId);
             }
         }
     }
 
-    async _refreshDetails(id) {
-        const source = this.sources[id];
-        const s = this.state[id];
-        const d = this._details[id];
+    async _refreshDetails(sourceId) {
+        const source = this.sources[sourceId];
+        const sourceState = this.state[sourceId];
+        const tracker = this._details[sourceId];
         const gap = source.detailsGapMs ?? DEFAULT_DETAILS_GAP_MS;
-        if (!source.fetchDetails || !s.enabled || d.inflight || Date.now() - d.at < gap || this._scope.disposed)
+        if (!source.fetchDetails || !sourceState.enabled || tracker.inflight || Date.now() - tracker.at < gap || this._scope.disposed)
             return;
-        const gen = ++d.generation;
-        d.inflight = true;
+        const generation = ++tracker.generation;
+        tracker.inflight = true;
         try {
             const details = await source.fetchDetails();
-            if (gen !== d.generation || this._scope.disposed || !s.enabled)
+            if (generation !== tracker.generation || this._scope.disposed || !sourceState.enabled)
                 return;
-            s.details = details;
-            d.at = Date.now();
-            this.emit('changed', id);
-        } catch (e) {
+            sourceState.details = details;
+            tracker.at = Date.now();
+            this.emit('changed', sourceId);
+        } catch (error) {
             // Details are best-effort; keep the last good set.
-            if (!(e instanceof CancelledError) && !this._scope.disposed)
-                console.error(`[OpsDeck] ${id} details failed: ${e.stack ?? e}`);
+            if (!(error instanceof CancelledError) && !this._scope.disposed)
+                console.error(`[OpsDeck] ${sourceId} details failed: ${error.stack ?? error}`);
         } finally {
-            if (gen === d.generation)
-                d.inflight = false;
+            if (generation === tracker.generation)
+                tracker.inflight = false;
         }
     }
 
-    _applyEnabled(id) {
-        const s = this.state[id];
-        s.enabled = this._settings.get_boolean(`enable-${id}`);
-        if (s.enabled) {
-            this._schedule(id);
-            this.refresh(id, {force: true});
+    _applyEnabled(sourceId) {
+        const sourceState = this.state[sourceId];
+        sourceState.enabled = this._settings.get_boolean(`enable-${sourceId}`);
+        if (sourceState.enabled) {
+            this._schedule(sourceId);
+            this.refresh(sourceId, {force: true});
         } else {
-            this._timers[id] = this._scope.clear(this._timers[id]);
+            this._timers[sourceId] = this._scope.clear(this._timers[sourceId]);
             // Drop any in-flight results.
-            this._generation[id]++;
-            this._inflight[id] = false;
-            this._again[id] = false;
-            Object.assign(this._details[id], {inflight: false, at: 0});
-            this._details[id].generation++;
-            Object.assign(s, {loading: false, data: null, error: null, updatedAt: 0, details: null});
+            this._generation[sourceId]++;
+            this._inflight[sourceId] = false;
+            this._again[sourceId] = false;
+            Object.assign(this._details[sourceId], {inflight: false, at: 0});
+            this._details[sourceId].generation++;
+            Object.assign(sourceState, {loading: false, data: null, error: null, updatedAt: 0, details: null});
         }
-        this.emit('enabled-changed', id);
-        this.emit('changed', id);
+        this.emit('enabled-changed', sourceId);
+        this.emit('changed', sourceId);
     }
 
-    _schedule(id) {
-        this._timers[id] = this._scope.clear(this._timers[id]);
-        if (!this.state[id].enabled)
+    _schedule(sourceId) {
+        this._timers[sourceId] = this._scope.clear(this._timers[sourceId]);
+        if (!this.state[sourceId].enabled)
             return;
-        const seconds = this._settings.get_int(`refresh-interval-${id}`);
-        this._timers[id] = this._scope.interval(seconds, () => this.refresh(id));
+        const seconds = this._settings.get_int(`refresh-interval-${sourceId}`);
+        this._timers[sourceId] = this._scope.interval(seconds, () => this.refresh(sourceId));
     }
 
     destroy() {
-        for (const sid of this._settingsIds)
-            this._settings.disconnect(sid);
+        for (const handlerId of this._settingsIds)
+            this._settings.disconnect(handlerId);
         this._settingsIds = [];
-        for (const id of SOURCE_IDS)
-            this._timers[id] = this._scope.clear(this._timers[id]);
+        for (const sourceId of SOURCE_IDS)
+            this._timers[sourceId] = this._scope.clear(this._timers[sourceId]);
         this.disconnectAll();
     }
 }

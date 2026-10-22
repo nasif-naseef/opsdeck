@@ -61,23 +61,16 @@ function discoverTempSensors() {
 }
 
 /** DRM cards with their vendor, e.g. {vendor: 'nvidia', card: '/sys/class/drm/card2'}. */
-function discoverGpus() {
+async function discoverGpus(cancellable) {
     const vendors = {'0x10de': 'nvidia', '0x8086': 'intel', '0x1002': 'amd'};
-    const gpus = [];
-    for (const card of listDir('/sys/class/drm').filter(n => /^card\d+$/.test(n))) {
-        const base = `/sys/class/drm/${card}`;
-        const [ok, bytes] = (() => {
-            try {
-                return GLib.file_get_contents(`${base}/device/vendor`);
-            } catch {
-                return [false, null];
-            }
-        })();
-        const vendor = ok ? vendors[new TextDecoder().decode(bytes).trim()] : null;
-        if (vendor)
-            gpus.push({vendor, card: base});
-    }
-    return gpus;
+    const cards = listDir('/sys/class/drm')
+        .filter(name => /^card\d+$/.test(name))
+        .map(name => `/sys/class/drm/${name}`);
+    const found = await Promise.all(cards.map(async card => {
+        const vendor = vendors[(await readText(`${card}/device/vendor`, cancellable))?.trim()];
+        return vendor ? {vendor, card} : null;
+    }));
+    return found.filter(Boolean);
 }
 
 export class SystemSource {
@@ -201,7 +194,7 @@ export class SystemSource {
     /* eslint-disable no-await-in-loop -- one GPU at a time: the NVIDIA power
        state must be read before deciding whether nvidia-smi may run */
     async _gpuStats() {
-        this._gpus ??= discoverGpus();
+        this._gpus ??= await discoverGpus(this._scope.cancellable);
         const read = p => readText(p, this._scope.cancellable);
         const out = [];
         let nvidiaDone = false;
