@@ -20,7 +20,7 @@ import {matchesPort, parseListening, visiblePorts} from '../extension/sources/po
 import {parseEstablished, parseSshArgs, parseWho} from '../extension/sources/ssh.js';
 import {classifyDockerError, hostPortIndex, parseContainers, parseLabels, parsePublished, parseStats,
     publishedPorts} from '../extension/sources/docker.js';
-import {ClaudeSource, panelPercent, parseCredentials, parseUsage} from '../extension/sources/claude.js';
+import {ClaudeSource, panelPercent, parseCredentials, parseUsage, windowLabel} from '../extension/sources/claude.js';
 import {SystemSource} from '../extension/sources/system.js';
 
 const here = GLib.path_get_dirname(GLib.filename_from_uri(import.meta.url)[0]);
@@ -253,6 +253,16 @@ test('parseUsage orders, clamps and skips nulls', () => {
     eq(w.map(x => [x.id, x.pct]), [['five_hour', 100], ['seven_day', 42], ['seven_day_sonnet', 3]]);
     eq(w[0].resetsAt, null);
     eq(w[1].resetsAt, Date.parse('2026-10-25T10:00:00Z'));
+});
+
+test('windowLabel derives names for any model, including new ones', () => {
+    eq(['five_hour', 'seven_day', 'seven_day_fable', 'seven_day_opus', 'seven_day_sonnet',
+        'seven_day_oauth_apps', 'five_hour_fable', 'monthly_thing'].map(windowLabel),
+    ['Session (5h)', 'Weekly (7d)', 'Weekly · Fable', 'Weekly · Opus', 'Weekly · Sonnet',
+        'Weekly · Apps', 'Session · Fable', 'Monthly Thing']);
+    const order = parseUsage({seven_day_opus: {utilization: 1}, seven_day_fable: {utilization: 2},
+        seven_day: {utilization: 3}, five_hour: {utilization: 4}, five_hour_fable: {utilization: 5}});
+    eq(order.map(w => w.id), ['five_hour', 'seven_day', 'five_hour_fable', 'seven_day_fable', 'seven_day_opus']);
 });
 
 test('panelPercent preference', () => {

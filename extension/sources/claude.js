@@ -21,13 +21,36 @@ const BETA_HEADER = 'oauth-2025-04-20';
 const MIN_FETCH_GAP_MS = 60_000;      // the endpoint rate-limits aggressively
 const MIN_FORCED_GAP_MS = 15_000;     // manual refreshes still get a floor
 
-export const WINDOW_LABELS = {
-    five_hour: 'Session (5h)',
-    seven_day: 'Weekly (7d)',
-    seven_day_opus: 'Weekly · Opus',
-    seven_day_sonnet: 'Weekly · Sonnet',
-    seven_day_oauth_apps: 'Weekly · Apps',
-};
+// Usage windows are named by period, optionally followed by what they cover
+// (a model family such as "fable" or "opus", or e.g. "oauth_apps"). Labels are
+// derived from the key, so new models show up without code changes.
+const PERIODS = [
+    ['five_hour', 'Session (5h)', 'Session'],
+    ['seven_day', 'Weekly (7d)', 'Weekly'],
+];
+const SCOPE_NAMES = {oauth_apps: 'Apps'};
+
+const titleCase = s => s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+/** "seven_day" → "Weekly (7d)", "seven_day_fable" → "Weekly · Fable". */
+export function windowLabel(id) {
+    for (const [prefix, whole, short] of PERIODS) {
+        if (id === prefix)
+            return whole;
+        if (id.startsWith(`${prefix}_`)) {
+            const scope = id.slice(prefix.length + 1);
+            return `${short} · ${SCOPE_NAMES[scope] ?? titleCase(scope)}`;
+        }
+    }
+    return titleCase(id);
+}
+
+/** Overall limits first (session, then weekly), then per-model ones alphabetically. */
+function windowRank(id) {
+    const period = PERIODS.findIndex(([prefix]) => id === prefix || id.startsWith(`${prefix}_`));
+    const overall = PERIODS.some(([prefix]) => id === prefix);
+    return [overall ? 0 : 1, period === -1 ? PERIODS.length : period, id];
+}
 
 export function credentialsPath() {
     return GLib.build_filenamev([GLib.get_home_dir(), '.claude', '.credentials.json']);
@@ -65,14 +88,15 @@ export function parseUsage(json) {
         const resetsAt = w.resets_at ? Date.parse(w.resets_at) : NaN;
         windows.push({
             id,
-            label: WINDOW_LABELS[id] ?? id.replace(/_/g, ' '),
+            label: windowLabel(id),
             pct: Math.max(0, Math.min(100, Math.round(w.utilization))),
             resetsAt: Number.isFinite(resetsAt) ? resetsAt : null,
         });
     }
-    const order = Object.keys(WINDOW_LABELS);
-    const rank = id => (order.includes(id) ? order.indexOf(id) : order.length);
-    return windows.sort((a, b) => rank(a.id) - rank(b.id));
+    return windows.sort((a, b) => {
+        const [ra, rb] = [windowRank(a.id), windowRank(b.id)];
+        return ra[0] - rb[0] || ra[1] - rb[1] || ra[2].localeCompare(rb[2]);
+    });
 }
 
 /** The percentage to show in the top bar for the given preference. */

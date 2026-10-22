@@ -37,7 +37,7 @@ const FAKE = {
         windows: [
             {id: 'five_hour', label: 'Session (5h)', pct: 34, resetsAt: now + 2.2 * HOUR},
             {id: 'seven_day', label: 'Weekly (7d)', pct: 61, resetsAt: now + 3.4 * 24 * HOUR},
-            {id: 'seven_day_opus', label: 'Weekly · Opus', pct: 12, resetsAt: now + 3.4 * 24 * HOUR},
+            {id: 'seven_day_fable', label: 'Weekly · Fable', pct: 12, resetsAt: now + 3.4 * 24 * HOUR},
         ],
     }),
 

@@ -76,7 +76,7 @@ export default class SmokeDriver extends Extension {
             windows: [
                 {id: 'five_hour', label: 'Session (5h)', pct: 34, resetsAt: Date.now() + 2.2 * hour},
                 {id: 'seven_day', label: 'Weekly (7d)', pct: 78, resetsAt: Date.now() + 61 * hour},
-                {id: 'seven_day_opus', label: 'Weekly · Opus', pct: 93, resetsAt: Date.now() + 61 * hour},
+                {id: 'seven_day_fable', label: 'Weekly · Fable', pct: 93, resetsAt: Date.now() + 61 * hour},
             ]}});
         hub.emit('changed', 'claude');
 
