@@ -53,6 +53,6 @@ export default [
         rules: {'no-await-in-loop': 'off'},
     },
     {
-        ignores: ['node_modules/', 'dist/', 'PATHFINDER-*/'],
+        ignores: ['node_modules/', 'dist/', 'notes/'],
     },
 ];

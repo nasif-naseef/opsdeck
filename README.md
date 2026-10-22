@@ -48,7 +48,3 @@ extension/
 tests/              gjs unit tests and fixtures
 scripts/            smoke-test.sh and a test-only driver extension
 ```
-
-## Publishing
-
-See [docs/SUBMISSION.md](docs/SUBMISSION.md) for the extensions.gnome.org checklist.

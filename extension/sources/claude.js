@@ -76,23 +76,82 @@ export function parseCredentials(text, nowMs) {
 }
 
 /**
- * Normalise the usage response into an ordered list of windows.
- *
- * @returns {{id: string, label: string, pct: number, resetsAt: number|null}[]}
+ * @typedef {object} UsageWindow
+ * @property {string} id - "five_hour", "seven_day", "seven_day_fable", ...
+ * @property {string} label
+ * @property {number} pct
+ * @property {number|null} resetsAt
+ * @property {number|null} sharePct - for a scoped limit: the share of the
+ *   weekly allowance it may use (e.g. 50)
  */
-export function parseUsage(json) {
+
+const pctOf = v => Math.max(0, Math.min(100, Math.round(v)));
+const timeOf = v => {
+    const t = v ? Date.parse(v) : NaN;
+    return Number.isFinite(t) ? t : null;
+};
+const slug = s => String(s).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+/**
+ * Newer responses list every limit in `limits`: the session and overall
+ * weekly limits plus "weekly_scoped" ones for a model or surface (e.g.
+ * Fable), with `weekly_scoped_shares` giving each scoped limit's share of
+ * the weekly allowance. Undocumented, so anything unexpected is skipped.
+ *
+ * @returns {UsageWindow[]|null} null when the response has no usable `limits`
+ */
+function parseLimits(json) {
+    if (!Array.isArray(json?.limits))
+        return null;
+    const shares = new Map();
+    for (const s of Array.isArray(json.weekly_scoped_shares) ? json.weekly_scoped_shares : []) {
+        if (Number.isInteger(s?.limit_index) && typeof s.allowance_percent_of_weekly === 'number')
+            shares.set(s.limit_index, s.allowance_percent_of_weekly);
+    }
+    const windows = [];
+    json.limits.forEach((limit, index) => {
+        if (!limit || typeof limit.percent !== 'number')
+            return;
+        const scopeName = limit.scope?.model?.display_name ?? limit.scope?.surface?.display_name ??
+            (typeof limit.scope?.surface === 'string' ? limit.scope.surface : null);
+        let id;
+        if (limit.kind === 'session')
+            id = 'five_hour';
+        else if (limit.kind === 'weekly_all')
+            id = 'seven_day';
+        else if (scopeName)
+            id = `${limit.group === 'session' ? 'five_hour' : 'seven_day'}_${slug(scopeName)}`;
+        else
+            return;
+        windows.push({
+            id,
+            label: scopeName ? `${limit.group === 'session' ? 'Session' : 'Weekly'} · ${scopeName}` : windowLabel(id),
+            pct: pctOf(limit.percent),
+            resetsAt: timeOf(limit.resets_at),
+            sharePct: shares.get(index) ?? null,
+        });
+    });
+    return windows.length ? windows : null;
+}
+
+/** Older responses: one top-level key per window ({utilization, resets_at}). */
+function parseWindowKeys(json) {
     const windows = [];
     for (const [id, w] of Object.entries(json ?? {})) {
         if (!w || typeof w !== 'object' || typeof w.utilization !== 'number')
             continue;
-        const resetsAt = w.resets_at ? Date.parse(w.resets_at) : NaN;
-        windows.push({
-            id,
-            label: windowLabel(id),
-            pct: Math.max(0, Math.min(100, Math.round(w.utilization))),
-            resetsAt: Number.isFinite(resetsAt) ? resetsAt : null,
-        });
+        windows.push({id, label: windowLabel(id), pct: pctOf(w.utilization), resetsAt: timeOf(w.resets_at), sharePct: null});
     }
+    return windows;
+}
+
+/**
+ * Normalise the usage response into an ordered list of windows.
+ *
+ * @returns {UsageWindow[]}
+ */
+export function parseUsage(json) {
+    const windows = parseLimits(json) ?? parseWindowKeys(json);
     return windows.sort((a, b) => {
         const [ra, rb] = [windowRank(a.id), windowRank(b.id)];
         return ra[0] - rb[0] || ra[1] - rb[1] || ra[2].localeCompare(rb[2]);

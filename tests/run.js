@@ -265,6 +265,20 @@ test('windowLabel derives names for any model, including new ones', () => {
     eq(order.map(w => w.id), ['five_hour', 'seven_day', 'five_hour_fable', 'seven_day_fable', 'seven_day_opus']);
 });
 
+test('parseUsage reads the newer limits list, including scoped (Fable) limits', () => {
+    const w = parseUsage(JSON.parse(fixture('claude-usage-limits.json')));
+    eq(w.map(x => [x.id, x.label, x.pct, x.sharePct]), [
+        ['five_hour', 'Session (5h)', 25, null],
+        ['seven_day', 'Weekly (7d)', 38, null],
+        ['seven_day_fable', 'Weekly · Fable', 0, 50],
+    ]);
+    eq(w[2].resetsAt, Date.parse('2026-10-28T03:00:00+00:00'));
+    eq(panelPercent(w, '7d'), 38);
+    // No usable limits list: fall back to the per-window keys.
+    eq(parseUsage({limits: [], five_hour: {utilization: 7}}).map(x => x.label), ['Session (5h)']);
+    eq(parseUsage({limits: 'nope', seven_day: {utilization: 9}}).map(x => x.pct), [9]);
+});
+
 test('panelPercent preference', () => {
     const w = parseUsage({five_hour: {utilization: 20}, seven_day: {utilization: 60}});
     eq([panelPercent(w, '5h'), panelPercent(w, '7d'), panelPercent(w, 'max')], [20, 60, 60]);

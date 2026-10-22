@@ -34,6 +34,8 @@ export class ClaudeView extends SourceView {
             const level = usageLevel(w.pct);
             const c = card(w.label, `${w.pct}%`, level);
             c.add_child(usageBar(w.pct, level));
+            if (typeof w.sharePct === 'number')
+                c.add_child(label(`Can use up to ${w.sharePct}% of the weekly limit`, 'opsdeck-meta'));
 
             if (w.resetsAt) {
                 const left = w.resetsAt - Date.now();

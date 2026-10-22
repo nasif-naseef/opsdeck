@@ -1,4 +1,5 @@
 dist/
 extension/schemas/gschemas.compiled
 node_modules/
+notes/
 *.zip
